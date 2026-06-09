@@ -10,7 +10,7 @@
   const height = s.dataset.height || '720px';
   const base = s.src.replace(/embed\.js.*$/, '');
   const frame = document.createElement('iframe');
-  frame.src = `${base}index.html?client=${encodeURIComponent(client)}&embed=1`;
+  frame.src = `${base}?client=${encodeURIComponent(client)}&embed=1`;
   frame.title = 'Configurateur de cuisine 3D';
   frame.loading = 'lazy';
   frame.allow = 'fullscreen';

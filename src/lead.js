@@ -3,7 +3,7 @@
 // (configuration complète + budget connu) livré au cuisiniste.
 import { getTenant } from './tenant.js';
 
-const API_URL = 'api/lead.php';
+const API_URL = '/api/lead';
 
 function el(html) {
   const t = document.createElement('template');

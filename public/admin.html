@@ -51,7 +51,7 @@
     let rows = [];
     $('auth').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const res = await fetch(`api/leads.php?client=${encodeURIComponent($('client').value)}&cle=${encodeURIComponent($('cle').value)}`);
+      const res = await fetch(`api/leads?client=${encodeURIComponent($('client').value)}&cle=${encodeURIComponent($('cle').value)}`);
       const data = await res.json();
       if (!res.ok) { $('out').innerHTML = `<div class="empty">${data.erreur || 'Erreur'}</div>`; return; }
       rows = data.leads;

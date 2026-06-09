@@ -6,11 +6,19 @@ et le devis (CAD, taxes québécoises incluses) se met à jour à chaque clic.
 
 ## Démarrage
 
+Application **Next.js 15** (App Router) prête pour Vercel. Le moteur 3D reste en modules
+ES vanilla (`src/`) montés dans une route client-only — la migration React/TypeScript se
+fait progressivement, sans réécriture du moteur.
+
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm run build      # build de production dans dist/ (chemins relatifs, servable par Laragon)
+npm run dev        # http://localhost:3000
+npm run build      # build de production Next (arrêter `dev` d'abord : ils partagent .next/)
+npm run start      # serveur de production
 ```
+
+URLs : `/` (configurateur), `/?client=cle` (marque blanche), `/admin.html` (boîte à leads),
+`/embed.js` (intégration iframe). API : `POST /api/lead`, `GET /api/leads?client=&cle=`.
 
 ## Fonctionnalités
 
@@ -85,12 +93,18 @@ code postal, horizon), envoie le lead à `api/lead.php` (repli silencieux en loc
 l'API est injoignable — le visiteur n'est jamais bloqué), puis génère un **PDF brandé aux
 couleurs du tenant** (jsPDF) : en-tête, lignes détaillées, taxes, total, mensualité, mentions.
 
-### API leads (PHP — compatible Laragon et tout hébergeur PHP)
-- `api/lead.php` — POST JSON, stockage JSONL par client dans `api/data/`, notification
-  courriel optionnelle (variable d'env `LEAD_NOTIFY_{CLIENT}`)
-- `api/leads.php?client=&cle=` — lecture protégée par clé secrète (`api/config.php`)
-- `admin.html` — boîte à leads : stats (volume, budget moyen, projets chauds), tableau,
-  export CSV
+### API leads (Route Handlers Next, TypeScript)
+- `POST /api/lead` — réception, validation, stockage JSON Lines par client dans
+  `data/leads/` (gitignoré). Clés clients : env `LEAD_CLIENTS` (JSON) ou démo locale
+  (`lib/clients.ts`). TODO Phase 2 : notification courriel (Resend).
+- `GET /api/leads?client=&cle=` — lecture protégée par clé secrète (comparaison à temps
+  constant).
+- `/admin.html` — boîte à leads : stats (volume, budget moyen, projets chauds), tableau,
+  export CSV.
+
+⚠ **Vercel** : le stockage fichier est éphémère en serverless — il fonctionne en dev local
+et en auto-hébergement Node. La Phase 2 branche un driver Postgres (Neon) derrière la même
+interface (`lib/leadStore.ts`) ; rien d'autre ne change.
 
 ### Intégration sur le site du client
 ```html
@@ -99,9 +113,10 @@ couleurs du tenant** (jsPDF) : en-tête, lignes détaillées, taxes, total, mens
 ```
 
 ### Déploiement
-Copier le contenu de `dist/` **et** le dossier `api/` au même niveau sur un hébergeur PHP
-(Laragon, cPanel, etc.). Personnaliser les clés secrètes de `api/config.php` et créer un
-`tenants/{cle}.json` par client.
+Déploiement standard Next.js (Vercel recommandé : `vercel deploy`, ou tout hôte Node avec
+`npm run build && npm run start`). Variables d'environnement : `LEAD_CLIENTS`
+(`{"cle-client":"secret",...}`). Créer un `public/tenants/{cle}.json` par client.
+Les en-têtes `frame-ancestors *` (embed iframe) sont configurés dans `next.config.mjs`.
 
 ## Requis métier
 
@@ -110,7 +125,21 @@ interdites, surfaces de dépôt, triangle de travail…) sont cataloguées dans
 **[REQUIS.md](REQUIS.md)** avec identifiant, priorité et statut face au code. C'est à la fois
 le backlog de réalisme et la mémoire de QA du planificateur.
 
-## Architecture (`src/`)
+## Architecture
+
+```
+app/                 # Next.js App Router
+├── layout.tsx       # shell HTML, polices, CSS global
+├── page.tsx         # route du configurateur (client-only, ssr: false)
+└── api/lead(.s)/    # Route Handlers TypeScript (réception + lecture des leads)
+components/
+└── Configurator.tsx # balisage du configurateur + montage du moteur (useEffect)
+lib/                 # clients.ts (clés), leadStore.ts (stockage, interface Phase 2)
+src/                 # ← le moteur, en modules ES vanilla (voir tableau ci-dessous)
+public/              # tenants/, catalogs/, admin.html, embed.js
+```
+
+### Le moteur (`src/`)
 
 | Fichier       | Rôle |
 |---------------|------|

@@ -47,7 +47,7 @@ export async function loadTenant() {
   const params = new URLSearchParams(location.search);
   const key = (params.get('client') || 'atelier-demo').replace(/[^a-z0-9-]/gi, '');
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}tenants/${key}.json`);
+    const res = await fetch(`/tenants/${key}.json`);
     if (res.ok) {
       const data = await res.json();
       tenant = {

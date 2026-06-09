@@ -174,24 +174,32 @@ document.getElementById('printBtn').addEventListener('click', async () => {
 });
 
 // ————— démarrage —————
-await loadTenant();
-// le fond de scène et la brume reprennent la teinte sombre du tenant
-ctx.scene.background.set(getTheme().inkDeep);
-ctx.scene.fog.color.set(getTheme().inkDeep);
-buildPanel();
-rebuild();
-document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
-if (import.meta.env.DEV) window.__dbg = { ctx, getCurrent: () => current };
+// Appelé par le composant React après le rendu du balisage (jamais en SSR).
+// Idempotent : le double-montage de React StrictMode ne démarre pas deux moteurs.
+let booted = false;
+export async function initApp() {
+  if (booted) return;
+  booted = true;
 
-const splash = document.getElementById('splash');
-document.getElementById('startBtn').addEventListener('click', () => {
-  splash.classList.add('gone');
-  document.getElementById('app').setAttribute('aria-hidden', 'false');
-  // envolée d'introduction
-  const v = viewPositions().ensemble;
-  ctx.camera.position.set(9, 6, 12);
-  ctx.flyTo(v.pos, v.tgt, 2.4);
-});
+  await loadTenant();
+  // le fond de scène et la brume reprennent la teinte sombre du tenant
+  ctx.scene.background.set(getTheme().inkDeep);
+  ctx.scene.fog.color.set(getTheme().inkDeep);
+  buildPanel();
+  rebuild();
+  document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
+  if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current };
 
-// position de départ douce derrière l'écran d'accueil
-ctx.camera.position.set(7, 4.5, 9);
+  const splash = document.getElementById('splash');
+  document.getElementById('startBtn').addEventListener('click', () => {
+    splash.classList.add('gone');
+    document.getElementById('app').setAttribute('aria-hidden', 'false');
+    // envolée d'introduction
+    const v = viewPositions().ensemble;
+    ctx.camera.position.set(9, 6, 12);
+    ctx.flyTo(v.pos, v.tgt, 2.4);
+  });
+
+  // position de départ douce derrière l'écran d'accueil
+  ctx.camera.position.set(7, 4.5, 9);
+}

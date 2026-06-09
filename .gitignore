@@ -1,11 +1,14 @@
 # Dépendances
 node_modules/
 
-# Build de production (régénéré par `npm run build`)
-dist/
+# Build Next.js (régénéré par `npm run build`)
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
 
 # Leads reçus — données personnelles de clients, jamais dans Git
-api/data/
+data/
 
 # Environnement et secrets locaux
 .env
@@ -15,7 +18,6 @@ api/data/
 # Journaux et caches
 *.log
 npm-debug.log*
-.vite/
 
 # Système d'exploitation / éditeurs
 .DS_Store
