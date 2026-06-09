@@ -1053,9 +1053,59 @@ export function buildKitchen(state) {
     }
   }
 
+  // ——— REQ-704 : coin aveugle mural — les armoires murales tournent le coin ———
+  const WBC_W = 0.76; // 30 po (produit réel : Wall Blind Corner)
+  function blindCornerUpper(mirror) {
+    const x0 = mirror ? a - WALL_CAB_D - 0.04 - WBC_W : WALL_CAB_D + 0.04;
+    // une fenêtre ou une porte dans la zone du coin → pas de coin aveugle
+    const clash = [...winsByWall.back, ...doorsByWall.back].some(
+      (o) => o.pos + o.width / 2 > x0 - 0.05 && o.pos - o.width / 2 < x0 + WBC_W + 0.05
+    );
+    if (clash) return false;
+    const g = new THREE.Group();
+    g.add(box(WBC_W - 0.004, WALL_CAB_H, WALL_CAB_D - 0.02, finish, WBC_W / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
+    const zF = WALL_CAB_D - DOOR_T / 2;
+    // la moitié côté coin est aveugle (panneau plein), l'autre porte une porte
+    const doorW = WBC_W / 2 - GAP * 2;
+    const blindX = mirror ? WBC_W * 0.75 : WBC_W * 0.25;
+    const doorX = mirror ? WBC_W * 0.25 : WBC_W * 0.75;
+    g.add(box(WBC_W / 2, WALL_CAB_H - GAP * 2, DOOR_T * 0.7, finish, blindX, WALL_CAB_H / 2, zF - 0.003));
+    const f = makeFront(doorW, WALL_CAB_H - GAP * 2, finish, state.doorStyle);
+    f.position.set(doorX, WALL_CAB_H / 2, zF);
+    g.add(f);
+    const h = makeHandle(state.handle, handleMat, true, 0.14);
+    if (h) {
+      h.position.set(doorX + (mirror ? doorW / 2 - 0.04 : -(doorW / 2 - 0.04)), 0.13, zF + DOOR_T / 2);
+      g.add(h);
+    }
+    manifest.handles++;
+    const strip = box(WBC_W - 0.06, 0.008, 0.02, S.glow, WBC_W / 2, -0.006, WALL_CAB_D - 0.08);
+    strip.castShadow = false;
+    g.add(strip);
+    g.position.set(x0, WALL_BOT, 0);
+    inner.add(g);
+    const s = findSku('wallBlindCorner', 30);
+    if (!manifest.addSku(s, 'Coin aveugle mural 30 po')) manifest.add('mur');
+    return true;
+  }
+  const wbcL = hasCornerL ? blindCornerUpper(false) : false;
+  const wbcR = hasCornerR ? blindCornerUpper(true) : false;
+
   // ——— armoires murales (évite fenêtres, hotte, colonnes, portes) ———
   for (const wk of cabWalls) {
-    let zones = (segsByWall[wk] || []).map(([s0, s1]) => [s0 + (wk === 'back' ? 0.0 : 0.22), s1]);
+    // les rubans muraux vont jusqu'au coin (après le coin aveugle ou le ruban perpendiculaire)
+    let upLo, upHi;
+    if (wk === 'back') {
+      upLo = hasCornerL ? WALL_CAB_D + 0.04 + (wbcL ? WBC_W + 0.004 : 0) : 0.02;
+      upHi = hasCornerR ? a - WALL_CAB_D - 0.04 - (wbcR ? WBC_W + 0.004 : 0) : a - 0.02;
+    } else {
+      upLo = WALL_CAB_D + 0.04;
+      upHi = wallLen[wk] - 0.02;
+    }
+    let zones = [[upLo, upHi]];
+    for (const door of doorsByWall[wk]) {
+      zones = cut(zones, door.pos - door.width / 2 - 0.07, door.pos + door.width / 2 + 0.07);
+    }
     for (const win of winsByWall[wk]) zones = cut(zones, win.pos - win.width / 2 - 0.08, win.pos + win.width / 2 + 0.08);
     if (placed.cuisiniere && placed.cuisiniere.wall === wk && state.appliances.hood) {
       zones = cut(zones, placed.cuisiniere.along - 0.5, placed.cuisiniere.along + 0.5);

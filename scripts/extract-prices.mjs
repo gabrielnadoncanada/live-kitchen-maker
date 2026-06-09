@@ -50,6 +50,8 @@ const data = {
     ),
     15
   ),
+  // coin aveugle mural (REQ-704) — hauteur 30
+  wallBlindCorner: byWidth(sub('wall-blind-corner'), 30),
   // garde-manger — hauteur ~90 (≈ notre 2,25 m), prof. 27
   pantry: byWidth(sub('utility-cabinet-pantry'), 90),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales

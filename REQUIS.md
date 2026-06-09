@@ -132,7 +132,7 @@ paramètre produit**.
 | REQ-701 | **Largeurs modulaires** : les caissons générés se posent en largeurs catalogue (pas de 3 po) + fillers 1½/3/6 po pour le reste — au lieu de largeurs continues arbitraires. | Haute | ✅ caissons au pas de 3 po (9–36) + fillers catalogue facturés |
 | REQ-702 | Dimensions normalisées : bas 34½ po + comptoir ≈ 36 po ✅ ; murales prof. 12 po (nous : 13,8 po → ajuster) ; **garde-manger prof. 27 po** (nous : 23,6) ; hauteurs murales choisies dans la gamme selon le plafond. | Moyenne | 🟡 |
 | REQ-703 | **Moulure shaker 1 po ou 3 po** : notre cadre est fixé à 2,6 po — offrir les deux largeurs réelles. | Basse | ⬜ |
-| REQ-704 | Coins : **coin mort** au bas (33–48 po), **coin aveugle** et **45°** au mural — notre coin unique ≈ coin mort 90°. Les armoires murales de coin n'existent pas chez nous. | Moyenne | ⬜ |
+| REQ-704 | Coins : **coin mort** au bas (33–48 po), **coin aveugle** et **45°** au mural — notre coin unique ≈ coin mort 90°. Les armoires murales de coin n'existent pas chez nous. | Moyenne | 🟡 coin aveugle mural 90° ✅ (WBC, les rubans muraux tournent le coin) ; coin 45° à faire |
 | REQ-705 | **Devis par SKU** : chaque pièce générée référence un SKU réel (`W0930`, `DRBC12`, `RRP103.5`…) avec son prix catalogue — le devis devient un bon de commande. | Haute | ✅ lignes de devis par SKU réel (DRBC30, W0930, WP249027, RRP, IBP…) × finition |
 | REQ-706 | Finitions alignées sur l'offre réelle du tenant via le filtre catalogue. | Moyenne | ✅ mécanique en place — reste à configurer le tenant Dilamco |
 | REQ-707 | **Multiplicateur de fini réaliste** : Chêne blanc = +13 % vs Blanc Pur au catalogue réel — nos multiplicateurs bois (×1,45–1,6) sont trop agressifs pour ce fabricant. Paramétrer par tenant. | Moyenne | ⬜ |
