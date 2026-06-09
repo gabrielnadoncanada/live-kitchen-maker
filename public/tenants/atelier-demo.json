@@ -1,0 +1,30 @@
+{
+  "key": "atelier-demo",
+  "name": "Atelier Cuisine",
+  "nameAccent": "Cuisine",
+  "tagline": "Atelier Cuisine · Studio 3D",
+  "accent": "#b08d57",
+  "accentBright": "#d4ab6a",
+  "theming": "tinted",
+  "contact": {
+    "phone": "1 800 555-0100",
+    "email": "bonjour@atelier-cuisine.ca",
+    "web": "atelier-cuisine.ca"
+  },
+  "business": {
+    "priceMultiplier": 1.0,
+    "installRate": 0.15,
+    "delivery": 295,
+    "taxes": [
+      { "label": "TPS (5 %)", "rate": 0.05 },
+      { "label": "TVQ (9,975 %)", "rate": 0.09975 }
+    ],
+    "financingMonths": 60,
+    "financingFactor": 1.045
+  },
+  "leadCapture": true,
+  "catalog": {
+    "disable": {},
+    "priceOverrides": {}
+  }
+}

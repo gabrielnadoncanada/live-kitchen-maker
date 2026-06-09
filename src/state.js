@@ -1,0 +1,50 @@
+// État central de la configuration + pub/sub minimaliste.
+const listeners = new Set();
+
+export const state = {
+  layout: 'l',            // 'lineaire' | 'l' | 'u'
+  island: true,
+  dims: { a: 4.4, b: 3.2, c: 3.0 },
+  // contraintes réelles de la pièce
+  constraints: {
+    water: { auto: true, wall: 'back', pos: 2.2 },   // entrée d'eau → position de l'évier
+    stove: { auto: true, wall: 'back', pos: 3.4 },   // prise 240 V → position de la cuisinière
+    // ouvertures existantes : fenêtres et portes, positionnées le long d'un mur
+    openings: [
+      { id: 1, type: 'fenetre', wall: 'back', pos: 2.2, width: 1.25 },
+    ],
+  },
+  preset: 'noyer-chic',
+  doorStyle: 'plate',     // 'plate' | 'shaker'
+  cabinetFinish: 'noyer',
+  islandFinish: 'noyer',
+  handle: 'barre-laiton',
+  counter: 'quartz-blanc',
+  backsplash: 'zellige-blanc',
+  floor: 'beton-poli',
+  wall: 'blanc-casse',
+  appliances: { fridge: true, range: true, hood: true, dw: true },
+  applianceFinish: 'inox',
+  moduleOverrides: {},    // id de module -> 'portes' | 'tiroirs' | 'ouvert'
+};
+
+export function setState(patch, meta = {}) {
+  deepMerge(state, patch);
+  for (const fn of listeners) fn(state, meta);
+}
+
+export function subscribe(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function deepMerge(target, patch) {
+  for (const k of Object.keys(patch)) {
+    const v = patch[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && typeof target[k] === 'object' && target[k]) {
+      deepMerge(target[k], v);
+    } else {
+      target[k] = v;
+    }
+  }
+}

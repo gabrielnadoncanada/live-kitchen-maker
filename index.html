@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atelier Cuisine — Concevez votre cuisine de rêve en 3D</title>
+  <meta name="description" content="Configurateur de cuisine 3D photoréaliste avec devis instantané. Matériaux, couleurs, agencements — voyez votre cuisine avant de la construire." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Albert+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='14' width='24' height='14' rx='1.5' fill='%23b08d57'/><rect x='4' y='10' width='24' height='3' rx='1' fill='%23e9e2d4'/><rect x='9' y='2' width='14' height='6' rx='1' fill='%232a2724'/></svg>" />
+</head>
+<body>
+  <!-- ÉCRAN D'ACCUEIL -->
+  <div id="splash" class="splash">
+    <div class="splash-inner">
+      <div class="splash-kicker reveal" style="--d:.1s">Atelier Cuisine · Studio 3D</div>
+      <h1 class="splash-title">
+        <span class="reveal" style="--d:.25s">Votre cuisine de rêve,</span>
+        <span class="reveal splash-em" style="--d:.45s">visible avant d'exister.</span>
+      </h1>
+      <p class="splash-sub reveal" style="--d:.65s">
+        Choisissez une forme, glissez quelques curseurs, touchez les matières.
+        Le rendu 3D et le prix se mettent à jour instantanément — aucune connaissance requise.
+      </p>
+      <button id="startBtn" class="btn-primary reveal" style="--d:.85s">
+        Commencer ma cuisine
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="splash-steps reveal" style="--d:1.05s">
+        <div><b>1</b> La forme</div><i></i>
+        <div><b>2</b> Les matières</div><i></i>
+        <div><b>3</b> Le devis</div>
+      </div>
+    </div>
+    <div class="splash-grain"></div>
+  </div>
+
+  <!-- APPLICATION -->
+  <div id="app" class="app" aria-hidden="true">
+    <canvas id="scene"></canvas>
+
+    <!-- Barre supérieure -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-name">Atelier <em>Cuisine</em></span>
+      </div>
+      <nav class="views" id="viewBtns">
+        <button data-view="ensemble" class="active">Vue 3D</button>
+        <button data-view="plan">Plan</button>
+        <button data-view="detail">Détail</button>
+      </nav>
+      <div class="topbar-right">
+        <span class="hint-chip">💡 Cliquez sur un meuble pour le modifier</span>
+      </div>
+    </header>
+
+    <!-- Panneau de configuration (gauche) -->
+    <aside class="panel" id="panel">
+      <div class="panel-scroll" id="panelScroll"></div>
+    </aside>
+
+    <!-- Devis en direct (droite) -->
+    <aside class="quote" id="quote">
+      <div class="quote-head">
+        <div>
+          <div class="quote-label">Devis en direct</div>
+          <div class="quote-total" id="quoteTotal">0&nbsp;$</div>
+          <div class="quote-monthly" id="quoteMonthly"></div>
+        </div>
+        <button class="quote-toggle" id="quoteToggle" aria-label="Détails du devis">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="quote-body" id="quoteBody">
+        <div id="quoteLines"></div>
+        <div class="quote-foot">
+          <button class="btn-ghost" id="printBtn">Imprimer le devis</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Popover d'édition de module -->
+    <div class="popover" id="popover" hidden>
+      <div class="popover-title" id="popoverTitle">Caisson</div>
+      <div class="popover-opts" id="popoverOpts"></div>
+    </div>
+
+    <div class="loadveil" id="loadveil"><span></span></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

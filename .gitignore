@@ -1,0 +1,26 @@
+# Dépendances
+node_modules/
+
+# Build de production (régénéré par `npm run build`)
+dist/
+
+# Leads reçus — données personnelles de clients, jamais dans Git
+api/data/
+
+# Environnement et secrets locaux
+.env
+.env.*
+!.env.example
+
+# Journaux et caches
+*.log
+npm-debug.log*
+.vite/
+
+# Système d'exploitation / éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boîte à leads — Atelier Cuisine</title>
+  <style>
+    :root { --ink:#211d19; --paper:#f4efe6; --brass:#b08d57; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Albert Sans','Segoe UI',sans-serif; background:#1c1814; color:var(--paper); min-height:100vh; padding:36px 24px; }
+    .wrap { max-width:1080px; margin:0 auto; }
+    h1 { font-size:24px; font-weight:600; margin-bottom:4px; }
+    h1 em { font-style:normal; color:#d4ab6a; }
+    .sub { color:rgba(244,239,230,.55); font-size:13px; margin-bottom:24px; }
+    form { display:flex; gap:10px; margin-bottom:26px; flex-wrap:wrap; }
+    input { padding:11px 14px; border-radius:10px; border:1px solid rgba(244,239,230,.2); background:rgba(244,239,230,.06); color:var(--paper); font:inherit; font-size:14px; min-width:220px; }
+    button { padding:11px 20px; border-radius:10px; border:none; background:var(--brass); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    button.ghost { background:transparent; border:1px solid rgba(212,171,106,.5); color:#d4ab6a; }
+    .stats { display:flex; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+    .stat { background:rgba(244,239,230,.06); border:1px solid rgba(244,239,230,.1); border-radius:14px; padding:14px 22px; }
+    .stat b { display:block; font-size:24px; color:#d4ab6a; }
+    .stat span { font-size:12px; color:rgba(244,239,230,.55); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:10px 12px; color:rgba(244,239,230,.5); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.1em; border-bottom:1px solid rgba(244,239,230,.15); }
+    td { padding:11px 12px; border-bottom:1px solid rgba(244,239,230,.07); }
+    td b { color:#d4ab6a; }
+    .empty { padding:40px; text-align:center; color:rgba(244,239,230,.45); }
+    a { color:#d4ab6a; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Boîte à <em>leads</em></h1>
+    <div class="sub">Chaque devis téléchargé = un prospect avec sa configuration complète et son budget.</div>
+    <form id="auth">
+      <input id="client" placeholder="Clé client (ex. atelier-demo)" required />
+      <input id="cle" type="password" placeholder="Clé secrète" required />
+      <button type="submit">Afficher</button>
+      <button type="button" class="ghost" id="csv" hidden>Exporter CSV</button>
+    </form>
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><b id="stTotal">0</b><span>leads au total</span></div>
+      <div class="stat"><b id="stBudget">0&nbsp;$</b><span>budget moyen configuré</span></div>
+      <div class="stat"><b id="stChaud">0</b><span>projets &lt; 3 mois</span></div>
+    </div>
+    <div id="out"></div>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(n);
+    let rows = [];
+    $('auth').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch(`api/leads.php?client=${encodeURIComponent($('client').value)}&cle=${encodeURIComponent($('cle').value)}`);
+      const data = await res.json();
+      if (!res.ok) { $('out').innerHTML = `<div class="empty">${data.erreur || 'Erreur'}</div>`; return; }
+      rows = data.leads;
+      $('stats').hidden = false;
+      $('csv').hidden = !rows.length;
+      $('stTotal').textContent = data.total;
+      const budgets = rows.map(l => l.devis && l.devis.total || 0).filter(Boolean);
+      $('stBudget').textContent = budgets.length ? fmt(budgets.reduce((a, b) => a + b, 0) / budgets.length) : '—';
+      $('stChaud').textContent = rows.filter(l => (l.contact.horizon || '') === 'moins-3-mois').length;
+      if (!rows.length) { $('out').innerHTML = '<div class="empty">Aucun lead pour le moment.</div>'; return; }
+      $('out').innerHTML = `<table><tr><th>Date</th><th>Nom</th><th>Contact</th><th>Code postal</th><th>Horizon</th><th>Budget</th><th>Cuisine</th></tr>${
+        rows.map(l => `<tr>
+          <td>${new Date(l.date || l.recu).toLocaleDateString('fr-CA')}</td>
+          <td>${esc(l.contact.nom)}</td>
+          <td>${esc(l.contact.courriel)}<br>${esc(l.contact.telephone || '')}</td>
+          <td>${esc(l.contact.codePostal || '')}</td>
+          <td>${esc(l.contact.horizon || '')}</td>
+          <td><b>${l.devis ? fmt(l.devis.total) : '—'}</b></td>
+          <td>${l.config ? `${({ lineaire: 'Linéaire', l: 'En L', u: 'En U' })[l.config.layout] || ''}${l.config.island ? ' + îlot' : ''}` : ''}</td>
+        </tr>`).join('')
+      }</table>`;
+    });
+    $('csv').addEventListener('click', () => {
+      const head = 'date;nom;courriel;telephone;code_postal;horizon;budget;agencement\n';
+      const body = rows.map(l => [
+        l.date || l.recu, l.contact.nom, l.contact.courriel, l.contact.telephone || '',
+        l.contact.codePostal || '', l.contact.horizon || '', l.devis ? l.devis.total : '',
+        l.config ? l.config.layout + (l.config.island ? '+ilot' : '') : '',
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['﻿' + head + body], { type: 'text/csv;charset=utf-8' }));
+      a.download = `leads-${$('client').value}.csv`;
+      a.click();
+    });
+    function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  </script>
+</body>
+</html>

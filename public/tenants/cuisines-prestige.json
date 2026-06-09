@@ -1,0 +1,39 @@
+{
+  "key": "cuisines-prestige",
+  "name": "Cuisines Prestige",
+  "nameAccent": "Prestige",
+  "tagline": "Cuisines Prestige · Manufacturier, Laval",
+  "accent": "#2f6b5e",
+  "accentBright": "#46977f",
+  "theming": "neutral",
+  "contact": {
+    "phone": "450 555-0199",
+    "email": "soumission@cuisinesprestige.ca",
+    "web": "cuisinesprestige.ca"
+  },
+  "business": {
+    "priceMultiplier": 1.18,
+    "installRate": 0.18,
+    "delivery": 395,
+    "taxes": [
+      { "label": "TPS (5 %)", "rate": 0.05 },
+      { "label": "TVQ (9,975 %)", "rate": 0.09975 }
+    ],
+    "financingMonths": 72,
+    "financingFactor": 1.055
+  },
+  "leadCapture": true,
+  "catalog": {
+    "disable": {
+      "counters": ["stratifie"],
+      "cabinetFinishes": ["terracotta"],
+      "floors": [],
+      "backsplashes": [],
+      "handles": []
+    },
+    "priceOverrides": {
+      "counters": { "quartz-blanc": 112, "marbre-vrai": 165 },
+      "modules": { "base-portes": 445, "garde-manger": 1095 }
+    }
+  }
+}
