@@ -27,14 +27,14 @@ Sources :
 | REQ-106 | Dégagement hotte–plaque ≈ 60 cm (min. 24 po pour une cuisinière électrique). | Moyenne | ✅ |
 | REQ-107 | La **cuisinière ne doit pas être directement adjacente au frigo** (chaleur) ni à une colonne sans surface de dépôt entre les deux. | Moyenne | ⬜ |
 | REQ-108 | **Cuisinière sous fenêtre** (NKBA 20) : interdite sous une fenêtre ouvrante (sauf > 24 po au-dessus) ; à ≥ 30 cm d'une porte. | Moyenne | 🟡 la fenêtre bloque les armoires murales mais pas l'implantation de la cuisinière |
-| REQ-110 | **Armoire au-dessus du réfrigérateur** : la niche du frigo se ferme par une armoire dédiée entre les panneaux latéraux (murales hauteurs 12–24 po en profondeur 18/20/27 au catalogue interne). | Haute | ⬜ vide au-dessus du frigo actuellement |
+| REQ-110 | **Armoire au-dessus du réfrigérateur** : la niche du frigo se ferme par une armoire dédiée entre les panneaux latéraux (murales hauteurs 12–24 po en profondeur 18/20/27 au catalogue interne). | Haute | ✅ armoire 2 portes entre les panneaux, SKU réel |
 | REQ-109 | Micro-ondes : emplacement dédié — produits réels au catalogue : armoire micro-ondes de bas (27 po, 372 $) et murale (24–27 po, 218–294 $). | Basse | ⬜ |
 
 ## 2. Implantation et circulation
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-201 | **Triangle de travail** (NKBA 26) : chaque côté entre 4 et 9 pi (1,22–2,74 m), somme ≤ 26 pi (7,92 m). Afficher un avertissement doux si violé. | Moyenne | ⬜ |
+| REQ-201 | **Triangle de travail** (NKBA 26) : chaque côté entre 4 et 9 pi (1,22–2,74 m), somme ≤ 26 pi (7,92 m). Afficher un avertissement doux si violé. | Moyenne | ✅ validateur doux — badge « recommandations d'ergonomie » |
 | REQ-202 | **Allées** (NKBA 3) : allée de travail ≥ 42 po (1,07 m) pour 1 cuisinier, 48 po pour 2 ; passage ≥ 36 po. | Haute | ✅ allée îlot fixée à 1,06 m |
 | REQ-208 | **Lave-vaisselle** (NKBA 16) : à ≤ 36 po (91 cm) de l'évier, avec 21 po de dégagement debout de chaque côté (pas de colonne collée). | Haute | 🟡 adjacence ✅, dégagement debout non vérifié |
 | REQ-209 | **Séparation des centres de travail** (NKBA 12) : jamais de frigo, colonne ou four mural **entre** l'évier et la cuisinière. | Haute | 🟡 le solveur tend à les regrouper, sans garantie formelle |
@@ -50,10 +50,10 @@ Sources :
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-301 | **Dépôt cuisinière** (NKBA 19) : 9 po d'un côté **et** 15 po de l'autre (23/38 cm) ; exception mur d'extrémité : 3 po + écran thermique. | Moyenne | ⬜ le remplissage automatique le donne souvent, sans garantie |
-| REQ-302 | **Dépôt évier** (NKBA 13) : 24 po d'un côté **et** 18 po de l'autre (61/46 cm), mesurés depuis le caisson d'évier ; le lave-vaisselle compte comme comptoir traversant. | Moyenne | ⬜ idem |
-| REQ-307 | **Centre de préparation** (NKBA 17) : ≥ 36 po (91 cm) de comptoir continu adjacent à l'évier. | Moyenne | ⬜ |
-| REQ-308 | **Dépôt frigo** (NKBA 18) : ≥ 15 po (38 cm) côté poignée, ou comptoir en face à ≤ 48 po. | Moyenne | ⬜ |
+| REQ-301 | **Dépôt cuisinière** (NKBA 19) : 9 po d'un côté **et** 15 po de l'autre (23/38 cm) ; exception mur d'extrémité : 3 po + écran thermique. | Moyenne | ✅ avertissement NKBA 19 |
+| REQ-302 | **Dépôt évier** (NKBA 13) : 24 po d'un côté **et** 18 po de l'autre (61/46 cm), mesurés depuis le caisson d'évier ; le lave-vaisselle compte comme comptoir traversant. | Moyenne | ✅ avertissement NKBA 13 |
+| REQ-307 | **Centre de préparation** (NKBA 17) : ≥ 36 po (91 cm) de comptoir continu adjacent à l'évier. | Moyenne | ✅ avertissement NKBA 17 |
+| REQ-308 | **Dépôt frigo** (NKBA 18) : ≥ 15 po (38 cm) côté poignée, ou comptoir en face à ≤ 48 po. | Moyenne | ✅ avertissement NKBA 18 (l'îlot compte comme dépôt en face) |
 | REQ-309 | **Évier près d'un coin** (NKBA 14) : ≥ 3 po du coin intérieur, ≥ 18 po d'un cul-de-sac. | Moyenne | ✅ via l'emprise du caisson de coin (92 cm > 3 po) |
 | REQ-303 | Hauteur de comptoir standard **90 cm** (36 po), épaisseur 4 cm, débord avant ~5 cm. | Haute | ✅ |
 | REQ-304 | Le comptoir est **troué à l'évier** (cuve encastrée) et **s'interrompt à la cuisinière** (appareil à son propre dessus). | Haute | ✅ |
@@ -129,16 +129,16 @@ paramètre produit**.
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-701 | **Largeurs modulaires** : les caissons générés se posent en largeurs catalogue (pas de 3 po) + fillers 1½/3/6 po pour le reste — au lieu de largeurs continues arbitraires. | Haute | ⬜ remplissage continu actuellement |
+| REQ-701 | **Largeurs modulaires** : les caissons générés se posent en largeurs catalogue (pas de 3 po) + fillers 1½/3/6 po pour le reste — au lieu de largeurs continues arbitraires. | Haute | ✅ caissons au pas de 3 po (9–36) + fillers catalogue facturés |
 | REQ-702 | Dimensions normalisées : bas 34½ po + comptoir ≈ 36 po ✅ ; murales prof. 12 po (nous : 13,8 po → ajuster) ; **garde-manger prof. 27 po** (nous : 23,6) ; hauteurs murales choisies dans la gamme selon le plafond. | Moyenne | 🟡 |
 | REQ-703 | **Moulure shaker 1 po ou 3 po** : notre cadre est fixé à 2,6 po — offrir les deux largeurs réelles. | Basse | ⬜ |
 | REQ-704 | Coins : **coin mort** au bas (33–48 po), **coin aveugle** et **45°** au mural — notre coin unique ≈ coin mort 90°. Les armoires murales de coin n'existent pas chez nous. | Moyenne | ⬜ |
-| REQ-705 | **Devis par SKU** : chaque pièce générée référence un SKU réel (`W0930`, `DRBC12`, `RRP103.5`…) avec son prix catalogue — le devis devient un bon de commande. | Haute | ⬜ |
+| REQ-705 | **Devis par SKU** : chaque pièce générée référence un SKU réel (`W0930`, `DRBC12`, `RRP103.5`…) avec son prix catalogue — le devis devient un bon de commande. | Haute | ✅ lignes de devis par SKU réel (DRBC30, W0930, WP249027, RRP, IBP…) × finition |
 | REQ-706 | Finitions alignées sur l'offre réelle du tenant via le filtre catalogue. | Moyenne | ✅ mécanique en place — reste à configurer le tenant Dilamco |
 | REQ-707 | **Multiplicateur de fini réaliste** : Chêne blanc = +13 % vs Blanc Pur au catalogue réel — nos multiplicateurs bois (×1,45–1,6) sont trop agressifs pour ce fabricant. Paramétrer par tenant. | Moyenne | ⬜ |
 | REQ-708 | **Hauteur de plafond paramétrable** (8 / 10 / 10½ pi) pilotant hauteurs de murales, garde-manger et fillers pleine hauteur. | Moyenne | ⬜ plafond fixe 2,72 m |
-| REQ-709 | **Panneaux d'îlot facturés** : le panneau arrière et l'habillage d'îlot sont des produits (66–134 $) — nous les dessinons sans les facturer. | Haute | ⬜ |
-| REQ-710 | **Panneau de retour lave-vaisselle** (3 po) quand le LV termine un ruban — produit réel DWR. | Moyenne | ⬜ |
+| REQ-709 | **Panneaux d'îlot facturés** : le panneau arrière et l'habillage d'îlot sont des produits (66–134 $) — nous les dessinons sans les facturer. | Haute | ✅ panneau arrière + 2 habillages facturés |
+| REQ-710 | **Panneau de retour lave-vaisselle** (3 po) quand le LV termine un ruban — produit réel DWR. | Moyenne | ✅ détection bout de segment + panneau DWR facturé |
 | REQ-711 | **Fausses portes** sur les flancs visibles (bouts de bas, murales, garde-manger) — raffinement de REQ-404 avec le produit réel (dummy doors). | Moyenne | ⬜ |
 | REQ-712 | **Tiroir à déchets coulissant** près de l'évier — couvre NKBA 15 (waste receptacles) avec un produit réel au catalogue (18 po). | Basse | ⬜ |
 | REQ-713 | **Range-épices coulissant 6/9/12 po** : utiliser les petits restes de ruban comme produit utile plutôt que comme filler perdu. | Basse | ⬜ |

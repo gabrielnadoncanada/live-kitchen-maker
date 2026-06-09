@@ -480,6 +480,29 @@ export function hidePopover() {
   document.getElementById('popover').hidden = true;
 }
 
+// ————————————— recommandations NKBA (validateur doux) —————————————
+export function renderNkba(warnings) {
+  let chip = document.getElementById('nkbaChip');
+  if (!chip) {
+    chip = el(`<div id="nkbaChip" class="nkba-chip" hidden>
+      <button class="nkba-head"></button>
+      <div class="nkba-list" hidden></div>
+    </div>`);
+    document.getElementById('app').appendChild(chip);
+    chip.querySelector('.nkba-head').addEventListener('click', () => {
+      const l = chip.querySelector('.nkba-list');
+      l.hidden = !l.hidden;
+    });
+  }
+  chip.hidden = warnings.length === 0;
+  if (!warnings.length) return;
+  chip.querySelector('.nkba-head').textContent =
+    `⚠ ${warnings.length} recommandation${warnings.length > 1 ? 's' : ''} d'ergonomie`;
+  chip.querySelector('.nkba-list').innerHTML = warnings
+    .map((w) => `<div class="nkba-item"><b>${w.id}</b> ${w.msg}</div>`)
+    .join('');
+}
+
 // menu contextuel générique (utilisé par l'éditeur de plan)
 export function showMenu(x, y, title, options) {
   const pop = document.getElementById('popover');

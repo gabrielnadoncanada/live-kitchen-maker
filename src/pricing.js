@@ -17,6 +17,13 @@ export function computeQuote(state, manifest) {
   // ——— Armoires ———
   const cabLines = [];
   let cabTotal = 0;
+  // REQ-705 : lignes par SKU réel du catalogue (le devis devient un bon de commande)
+  for (const it of Object.values(manifest.skuItems || {})) {
+    const unit = Math.round(it.unit * (it.finishMult ? mult : 1));
+    const total = unit * it.qty;
+    cabTotal += total;
+    cabLines.push({ name: it.label, detail: `${it.qty} × ${fmt(unit)} · ${it.sku}`, value: total });
+  }
   for (const [key, count] of Object.entries(manifest.modules)) {
     const def = MODULE_PRICES[key];
     if (!def || def.price === 0) continue;

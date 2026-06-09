@@ -4,7 +4,8 @@ import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { state, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, showPopover, hidePopover } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showPopover, hidePopover } from './ui.js';
+import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
 import { loadTenant, getTenant, getTheme } from './tenant.js';
 import { captureLead } from './lead.js';
@@ -39,6 +40,7 @@ function rebuild() {
   planEd.sync();
   lastQuote = computeQuote(state, current.manifest);
   renderQuote(lastQuote);
+  renderNkba(computeNkbaWarnings(current.nkba));
 }
 let lastQuote = null;
 

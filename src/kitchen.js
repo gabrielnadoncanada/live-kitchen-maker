@@ -9,6 +9,7 @@ import {
   HANDLES, APPLIANCE_FINISHES,
 } from './catalog.js';
 import { getTenant, getTheme } from './tenant.js';
+import { findSku, fillerSku, IN } from './skuCatalog.js';
 
 // ——— dimensions normalisées (m) ———
 const PLINTH = 0.1;
@@ -116,7 +117,7 @@ function makeHandle(kind, mat, vertical = false, len = 0.17) {
 }
 
 // ——— caisson bas ———
-function buildBase(w, type, mats, manifest) {
+function buildBase(w, type, mats, manifest, widthIn = null) {
   const { finish, handleKind, handleMat, doorStyle, applianceMat } = mats;
   const g = new THREE.Group();
   const S = fixedMats();
@@ -158,6 +159,7 @@ function buildBase(w, type, mats, manifest) {
 
   if (type === 'filler') {
     g.add(box(w - 0.002, frontH, DOOR_T, finish, w / 2, frontY0 + frontH / 2, zF));
+    manifest.addSku(fillerSku(widthIn ?? w / IN), 'Filler de finition (bas)');
     return g;
   }
 
@@ -174,7 +176,8 @@ function buildBase(w, type, mats, manifest) {
       if (h) { h.position.set(w / 2, y + (frontH * frac) / 2 + dh * 0.32, zF + DOOR_T / 2); g.add(h); }
       manifest.handles++;
     });
-    manifest.add('base-tiroirs');
+    const s = widthIn != null ? findSku('baseDrawer', widthIn) : null;
+    if (!manifest.addSku(s, `Caisson à tiroirs ${s?.widthIn} po`)) manifest.add('base-tiroirs');
     return g;
   }
 
@@ -193,7 +196,12 @@ function buildBase(w, type, mats, manifest) {
     }
     manifest.handles++;
   });
-  manifest.add(type === 'evier' ? 'base-evier' : 'base-portes');
+  if (type === 'evier') {
+    manifest.add('base-evier');
+  } else {
+    const s = widthIn != null ? findSku('baseStandard', widthIn) : null;
+    if (!manifest.addSku(s, `Caisson bas ${s?.widthIn} po`)) manifest.add('base-portes');
+  }
   return g;
 }
 
@@ -271,12 +279,13 @@ function buildPantry(mats, manifest) {
   const hh2 = makeHandle(handleKind, handleMat, true, 0.17);
   if (hh2) { hh2.position.set(W - 0.06, PLINTH + h1 + 0.12, zF + DOOR_T / 2); g.add(hh2); }
   manifest.handles += 2;
-  manifest.add('garde-manger');
+  const s = findSku('pantry', Math.round(W / IN));
+  if (!manifest.addSku(s, `Garde-manger ${s?.widthIn} po`)) manifest.add('garde-manger');
   return g;
 }
 
 // ——— armoire murale ———
-function buildWallCab(w, mats, manifest) {
+function buildWallCab(w, mats, manifest, widthIn = null) {
   const { finish, handleKind, handleMat, doorStyle } = mats;
   const g = new THREE.Group();
   g.add(box(w - 0.004, WALL_CAB_H, WALL_CAB_D - 0.02, finish, w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
@@ -300,7 +309,8 @@ function buildWallCab(w, mats, manifest) {
   const strip = box(w - 0.06, 0.008, 0.02, S.glow, w / 2, -0.006, WALL_CAB_D - 0.08);
   strip.castShadow = false;
   g.add(strip);
-  manifest.add('mur');
+  const s = widthIn != null ? findSku('wall', widthIn) : null;
+  if (!manifest.addSku(s, `Armoire murale ${s?.widthIn} po`)) manifest.add('mur');
   return g;
 }
 
@@ -481,6 +491,29 @@ function splitWidths(len) {
   return Array(n).fill(len / n);
 }
 
+// REQ-701 : largeurs modulaires catalogue. Un espace se remplit avec des caissons
+// aux largeurs réelles (multiples de 3 po, 9–36 po) ; le reste (< 3 po) devient
+// un filler catalogue (1½ / 3 / 6 po). Retourne [{ w (m), widthIn, filler }].
+function catalogWidths(len) {
+  const T = len / IN; // pouces disponibles
+  if (T < 1) return [];
+  if (T < 9) return [{ w: len, widthIn: T, filler: true }];
+  const S = Math.floor(T / 3) * 3; // somme des caissons, multiple de 3 po
+  let n = Math.max(1, Math.round(S / 30)); // cible ~30 po par caisson
+  while (S / n > 36) n++;
+  while (n > 1 && S / n < 9) n--;
+  const base3 = Math.floor(S / (3 * n));
+  const extra = S / 3 - base3 * n; // caissons recevant +3 po
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const wi = (base3 + (i < extra ? 1 : 0)) * 3;
+    out.push({ w: wi * IN, widthIn: wi, filler: false });
+  }
+  const rest = T - S;
+  if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
+  return out;
+}
+
 // retranche [c0,c1] d'une liste d'intervalles
 function cut(intervals, c0, c1) {
   return intervals.flatMap(([s0, s1]) =>
@@ -491,6 +524,7 @@ function cut(intervals, c0, c1) {
 class Manifest {
   constructor() {
     this.modules = {};
+    this.skuItems = {}; // REQ-705 : lignes de devis par SKU réel du catalogue
     this.handles = 0;
     this.counterArea = 0;
     this.backsplashArea = 0;
@@ -499,6 +533,13 @@ class Manifest {
     this.islandModules = 0;
   }
   add(key, n = 1) { this.modules[key] = (this.modules[key] || 0) + n; }
+  // retourne true si l'entrée catalogue existe (sinon l'appelant retombe sur add())
+  addSku(entry, label, { finishMult = true } = {}) {
+    if (!entry || !entry.sku) return false;
+    const it = (this.skuItems[entry.sku] ||= { sku: entry.sku, label, unit: entry.price, qty: 0, finishMult });
+    it.qty++;
+    return true;
+  }
 }
 
 // ————————————————————————— CONSTRUCTION PRINCIPALE —————————————————————————
@@ -827,9 +868,14 @@ export function buildKitchen(state) {
       let cursor = s0;
       let fillIdx = 0;
       const pushFill = (from, to) => {
-        for (const w of splitWidths(to - from)) {
-          slots.push({ w, type: 'auto-' + (fillIdx % 2 ? 'portes' : 'tiroirs') });
-          fillIdx++;
+        // REQ-701 : caissons aux largeurs catalogue (pas de 3 po) + filler pour le reste
+        for (const piece of catalogWidths(to - from)) {
+          if (piece.filler) {
+            slots.push({ w: piece.w, type: 'filler', widthIn: piece.widthIn });
+          } else {
+            slots.push({ w: piece.w, type: 'auto-' + (fillIdx % 2 ? 'portes' : 'tiroirs'), widthIn: piece.widthIn });
+            fillIdx++;
+          }
         }
       };
       segItems.forEach((it, i) => {
@@ -838,6 +884,13 @@ export function buildKitchen(state) {
         cursor = xs[i] + it.w;
       });
       pushFill(cursor, s1);
+      // REQ-710 : un lave-vaisselle en bout de segment expose son flanc → panneau de retour
+      slots.forEach((slot, i) => {
+        if (slot.type === 'lavevaisselle') {
+          if (i === 0) slot.dwPanel = 'debut';
+          else if (i === slots.length - 1) slot.dwPanel = 'fin';
+        }
+      });
       // poser les modules
       let along = s0;
       // recale pour que les modules collent : la somme des slots = segLen par construction
@@ -858,16 +911,45 @@ export function buildKitchen(state) {
           const pd = 0.7;
           g.add(box(0.025, TALL_H, pd, finish, 0.0125, TALL_H / 2, pd / 2));
           g.add(box(0.025, TALL_H, pd, finish, FRIDGE_W - 0.0125, TALL_H / 2, pd / 2));
-          manifest.add('panneau-frigo', 2);
+          const rrp = findSku('fridgeReturnPanel');
+          if (!manifest.addSku(rrp, 'Panneau de retour réfrigérateur')) manifest.add('panneau-frigo');
+          if (rrp) manifest.addSku(rrp, 'Panneau de retour réfrigérateur'); // ×2 (un par côté)
+          else manifest.add('panneau-frigo');
+          // REQ-110 : armoire dédiée au-dessus du frigo, entre les panneaux
+          {
+            const niche = FRIDGE_W - 0.05;
+            const ofY0 = 1.86, ofH = TALL_H - ofY0, ofD = 0.6;
+            g.add(box(niche - 0.004, ofH, ofD - 0.02, finish, FRIDGE_W / 2, ofY0 + ofH / 2, (ofD - 0.02) / 2));
+            const dw2 = (niche - GAP * 3) / 2;
+            const zF2 = ofD - DOOR_T / 2;
+            [GAP + dw2 / 2, GAP * 2 + dw2 * 1.5].forEach((x, i) => {
+              const f = makeFront(dw2, ofH - GAP * 2, finish, mats.doorStyle);
+              f.position.set(0.025 + x, ofY0 + ofH / 2, zF2);
+              g.add(f);
+              const h = makeHandle(mats.handleKind, mats.handleMat, false, 0.14);
+              if (h) { h.position.set(0.025 + x, ofY0 + 0.07, zF2 + DOOR_T / 2); g.add(h); }
+              manifest.handles++;
+            });
+            const of = findSku('overFridge', Math.round(niche / IN));
+            if (!manifest.addSku(of, 'Armoire au-dessus du réfrigérateur')) manifest.add('mur');
+          }
           manifest.appliances.fridge = true;
           placed.frigo = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
         } else if (type === 'garde-manger') {
           g = buildPantry(mats, manifest);
           placed.pantry = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
         } else {
-          g = buildBase(slot.w, type, mats, manifest);
+          g = buildBase(slot.w, type, mats, manifest, slot.widthIn ?? null);
           if (type === 'cuisiniere') { manifest.appliances.range = true; placed.cuisiniere = { wall: wallKey, along: along + slot.w / 2, w: slot.w }; }
-          if (type === 'lavevaisselle') manifest.appliances.dw = true;
+          if (type === 'lavevaisselle') {
+            manifest.appliances.dw = true;
+            if (slot.dwPanel) {
+              // REQ-710 : panneau de retour côté exposé du lave-vaisselle
+              const px = slot.dwPanel === 'debut' ? -0.011 : slot.w + 0.011;
+              g.add(box(0.02, PLINTH + CARCASS_H, BASE_D + 0.02, finish, px, (PLINTH + CARCASS_H) / 2, (BASE_D + 0.02) / 2));
+              manifest.addSku(findSku('dwReturnPanel'), 'Panneau de retour lave-vaisselle');
+            }
+          }
           if (type === 'evier') placed.evier = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
         }
         g.position.copy(pl.pos);
@@ -904,7 +986,8 @@ export function buildKitchen(state) {
     cg.add(box(BASE_D - 0.02, CARCASS_H, CORNER - BASE_D, finish, base + sgn * (BASE_D - 0.02) / 2, PLINTH + CARCASS_H / 2, BASE_D + (CORNER - BASE_D) / 2));
     cg.add(box(BASE_D - 0.09, PLINTH, CORNER - BASE_D, S.shadeBlack, base + sgn * (BASE_D - 0.09) / 2, PLINTH / 2, BASE_D + (CORNER - BASE_D) / 2));
     inner.add(cg);
-    manifest.add('base-coin');
+    const cs = findSku('baseCorner', Math.round(CORNER / IN));
+    if (!manifest.addSku(cs, `Caisson de coin ${cs?.widthIn} po`)) manifest.add('base-coin');
     return x0;
   }
   if (hasCornerL) cornerUnit(false);
@@ -982,13 +1065,22 @@ export function buildKitchen(state) {
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
       let cx = z0;
-      for (const w of splitWidths(z1 - z0)) {
-        const wc = buildWallCab(w, mats, manifest);
-        const pl = modulePlacement(wk, cx, w, WALL_BOT);
-        wc.position.copy(pl.pos);
-        wc.rotation.y = pl.rotY;
-        inner.add(wc);
-        cx += w;
+      for (const piece of catalogWidths(z1 - z0)) {
+        const pl = modulePlacement(wk, cx, piece.w, WALL_BOT);
+        if (piece.filler) {
+          const fg = new THREE.Group();
+          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, 0.02, finish, piece.w / 2, WALL_CAB_H / 2, WALL_CAB_D - 0.02));
+          fg.position.copy(pl.pos);
+          fg.rotation.y = pl.rotY;
+          inner.add(fg);
+          manifest.addSku(fillerSku(piece.widthIn), 'Filler de finition (mural)');
+        } else {
+          const wc = buildWallCab(piece.w, mats, manifest, piece.widthIn);
+          wc.position.copy(pl.pos);
+          wc.rotation.y = pl.rotY;
+          inner.add(wc);
+        }
+        cx += piece.w;
       }
     }
   }
@@ -1009,18 +1101,21 @@ export function buildKitchen(state) {
   let islandCenter = null;
   let islandGroup = null;
   if (state.island) {
-    const islW = Math.min(Math.max(a - 2.0, 1.5), 2.6);
+    // largeur aimantée au pas de 3 po : les modules d'îlot sont des caissons catalogue
+    const islW = Math.round(Math.min(Math.max(a - 2.0, 1.5), 2.6) / (3 * IN)) * 3 * IN;
     const islD = 0.95;
     const islZ0 = BASE_D + 1.06;
     const islX0 = (a - islW) / 2;
     islandCenter = new THREE.Vector3(a / 2, 0.95, islZ0 + islD / 2);
     const ig = new THREE.Group();
-    const islSlots = splitWidths(islW).map((w, i) => ({ w, type: i % 2 ? 'auto-portes' : 'auto-tiroirs' }));
+    const islSlots = catalogWidths(islW)
+      .filter((p) => !p.filler)
+      .map((p, i) => ({ w: p.w, widthIn: p.widthIn, type: i % 2 ? 'auto-portes' : 'auto-tiroirs' }));
     let cx = islX0 + islW;
     islSlots.forEach((slot, i) => {
       const id = `isl:${i}`;
       let type = state.moduleOverrides[id] || slot.type.slice(5);
-      const g = buildBase(slot.w, type, islandMats, manifest);
+      const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
       ig.add(g);
@@ -1032,10 +1127,14 @@ export function buildKitchen(state) {
       hit.userData = { editable: true, moduleId: id, current: type, width: slot.w };
       g.add(hit);
       editables.push(hit);
-      manifest.add('ilot-module');
       manifest.islandModules++;
       cx -= slot.w;
     });
+    // REQ-709 : les panneaux d'îlot sont des produits facturés (arrière + habillage ×2)
+    manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot');
+    const skin = findSku('islandSkinPanel');
+    manifest.addSku(skin, 'Panneau d’habillage d’îlot');
+    manifest.addSku(skin, 'Panneau d’habillage d’îlot');
     ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, a / 2, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
@@ -1304,6 +1403,18 @@ export function buildKitchen(state) {
     ? toWorld(pointFor(placed.evier.wall, placed.evier.along, 0.4, 0.95))
     : toWorld(new THREE.Vector3(a / 2, 0.95, 0.4));
 
+  // données pour le validateur NKBA (triangle de travail, surfaces de dépôt)
+  const nkbaInfo = {
+    island: state.island,
+    placed: { evier: placed.evier, cuisiniere: placed.cuisiniere, frigo: placed.frigo },
+    pts: {},
+    spans: {},
+  };
+  for (const [k, p] of Object.entries(nkbaInfo.placed)) {
+    if (p) nkbaInfo.pts[k] = toWorld(pointFor(p.wall, p.along, 0.3, 0));
+  }
+  for (const wk of cabWalls) nkbaInfo.spans[wk] = counterSpans(wk);
+
   const focus = {
     center: new THREE.Vector3(0, 0.95, 0),
     sink: sinkPt,
@@ -1316,7 +1427,7 @@ export function buildKitchen(state) {
     cabWalls,
   };
 
-  return { group: root, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup };
+  return { group: root, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo };
 }
 
 export function disposeKitchen(group) {
