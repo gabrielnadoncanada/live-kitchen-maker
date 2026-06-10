@@ -88,6 +88,12 @@ export default function Configurator() {
           </nav>
           <div className="topbar-right">
             <span className="hint-chip">💡 Cliquez sur un meuble pour le modifier</span>
+            <button id="photoBtn" className="top-action" title="Photo HD de ma cuisine" aria-label="Photo HD">
+              📸
+            </button>
+            <button id="shareBtn" className="top-action" title="Partager ma cuisine (lien)" aria-label="Partager">
+              🔗
+            </button>
           </div>
         </header>
 

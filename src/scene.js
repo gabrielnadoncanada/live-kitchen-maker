@@ -96,6 +96,27 @@ export function createScene(canvasEl) {
   }
   loop();
 
+  // REQ-915/916 : rendu hors-écran à la résolution demandée → image (photo HD,
+  // vignette du PDF). L'état du rendu est restauré immédiatement.
+  function captureImage(w = 2560, h = 1440, type = 'image/png', quality = 0.92) {
+    const prevRatio = renderer.getPixelRatio();
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    const prevAspect = camera.aspect;
+    renderer.setPixelRatio(1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+    const url = renderer.domElement.toDataURL(type, quality);
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(size.x, size.y, false);
+    camera.aspect = prevAspect;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+    return url;
+  }
+
   // termine instantanément le vol en cours (tests, onglet en arrière-plan)
   function snapFly() {
     if (!camAnim) return;
@@ -110,6 +131,7 @@ export function createScene(canvasEl) {
     renderer, scene, camera, controls, sun,
     flyTo,
     snapFly,
+    captureImage,
     cancelFly: () => { camAnim = null; },
     setTick: (fn) => { onTick = fn; },
   };

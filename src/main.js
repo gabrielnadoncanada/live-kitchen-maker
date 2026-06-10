@@ -4,7 +4,8 @@ import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, hidePopover } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, hidePopover, showToast } from './ui.js';
+import { buildShareUrl, applySharedConfig } from './share.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
 import { loadTenant, getTenant, getTheme } from './tenant.js';
@@ -175,9 +176,33 @@ document.getElementById('printBtn').addEventListener('click', async () => {
   if (!lastQuote) return;
   const contact = await captureLead(() => ({
     config: JSON.parse(JSON.stringify(state)),
+    lien: buildShareUrl(), // REQ-914 : le vendeur rouvre le projet 3D du lead
     devis: { total: lastQuote.total, sousTotal: lastQuote.subtotal, mensualite: lastQuote.monthly },
   }));
-  downloadQuotePdf(lastQuote, state, contact);
+  // REQ-916 : vignette panoramique de la cuisine dans le PDF
+  const image = ctx.captureImage(2000, 750, 'image/jpeg', 0.85);
+  downloadQuotePdf(lastQuote, state, contact, { image, shareUrl: buildShareUrl() });
+});
+
+// REQ-914 : partage de la configuration par lien
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  const url = buildShareUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Lien copié ! Envoyez-le ou gardez-le pour reprendre votre projet.');
+  } catch {
+    window.prompt('Copiez le lien de votre cuisine :', url);
+  }
+});
+
+// REQ-915 : photo HD de la vue actuelle
+document.getElementById('photoBtn').addEventListener('click', () => {
+  const url = ctx.captureImage(2560, 1440, 'image/png');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ma-cuisine.png';
+  a.click();
+  showToast('Photo HD téléchargée 📸');
 });
 
 // ————— démarrage —————
@@ -192,6 +217,8 @@ export async function initApp() {
   // le fond de scène et la brume reprennent la teinte sombre du tenant
   ctx.scene.background.set(getTheme().inkDeep);
   ctx.scene.fog.color.set(getTheme().inkDeep);
+  // REQ-914 : une configuration partagée dans l'URL (?c=) est rouverte telle quelle
+  applySharedConfig();
   buildPanel();
   rebuild();
   document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';

@@ -10,7 +10,7 @@ function hexRgb(hex) {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-export function downloadQuotePdf(quote, state, contact) {
+export function downloadQuotePdf(quote, state, contact, { image = null, shareUrl = null } = {}) {
   const tenant = getTenant();
   const theme = getTheme();
   const accent = hexRgb(tenant.accent);
@@ -61,7 +61,17 @@ export function downloadQuotePdf(quote, state, contact) {
   const islNote = state.island && state.layout !== 'galley'
     ? ((state.islandMode || 'libre') === 'peninsule' ? ' + péninsule' : ' + îlot') : '';
   doc.text(`Cuisine ${LAYOUT_LABELS[state.layout]}${islNote} — ${dims.join(', ')}`, M + 32, y);
-  y += 10;
+  y += 6;
+
+  // REQ-916 : vignette panoramique de la cuisine configurée (rendu 3D au moment du devis)
+  if (image) {
+    const iw = W - M * 2;
+    const ih = iw * (750 / 2000);
+    doc.addImage(image, 'JPEG', M, y, iw, ih, undefined, 'FAST');
+    y += ih + 6;
+  } else {
+    y += 4;
+  }
 
   const line = (name, value, { bold = false, small = false, indent = 0 } = {}) => {
     if (y > 272) { doc.addPage(); y = 20; }
@@ -114,6 +124,16 @@ export function downloadQuotePdf(quote, state, contact) {
   doc.setTextColor(...hexRgb(tenant.accentBright));
   doc.text(`ou environ ${fmt(quote.monthly)}/mois sur ${quote.financingMonths} mois`, M + 6, y + 14.2);
   y += 24;
+
+  // REQ-914 : le devis ramène vers le projet 3D — le client le rouvre et le modifie
+  if (shareUrl) {
+    if (y > 280) { doc.addPage(); y = 20; }
+    doc.setTextColor(...accent);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.textWithLink('▶  Rouvrir et modifier mon projet 3D en ligne', M, y, { url: shareUrl });
+    y += 7;
+  }
 
   doc.setTextColor(120, 112, 100);
   doc.setFontSize(7.5);

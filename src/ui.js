@@ -679,6 +679,22 @@ export function renderNkba(warnings) {
     .join('');
 }
 
+// petit toast de confirmation (lien copié, photo téléchargée…)
+export function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = el('<div id="toast" class="toast" hidden></div>');
+    document.getElementById('app').appendChild(t);
+  }
+  t.textContent = msg;
+  t.hidden = false;
+  t.classList.remove('show');
+  void t.offsetWidth;
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
 // menu contextuel générique (utilisé par l'éditeur de plan)
 export function showMenu(x, y, title, options) {
   const pop = document.getElementById('popover');

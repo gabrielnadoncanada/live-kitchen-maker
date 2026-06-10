@@ -205,9 +205,9 @@ travail. Classés par impact sur la crédibilité.
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-914 | **Sauvegarde/partage de la configuration** (lien) — le client revient, le vendeur rouvre le projet au rendez-vous ; le lead inclut le lien. | **Haute** | ⬜ |
-| REQ-915 | **Capture photo HD** de sa cuisine (bouton télécharger/partager) — marketing organique. | Moyenne | ⬜ |
-| REQ-916 | **Image de la cuisine dans le PDF** de devis. | Moyenne | ⬜ |
+| REQ-914 | **Sauvegarde/partage de la configuration** (lien) — le client revient, le vendeur rouvre le projet au rendez-vous ; le lead inclut le lien. | **Haute** | ✅ config complète encodée dans l'URL (`?c=`, base64url, ~1 ko, aucun serveur) ; bouton 🔗 topbar (copie + toast) ; le lead (`lien`) et le PDF (« Rouvrir mon projet 3D ») portent le lien |
+| REQ-915 | **Capture photo HD** de sa cuisine (bouton télécharger/partager) — marketing organique. | Moyenne | ✅ bouton 📸 topbar — rendu hors-écran 2560×1440 PNG, état du rendu restauré |
+| REQ-916 | **Image de la cuisine dans le PDF** de devis. | Moyenne | ✅ vignette panoramique 2000×750 JPEG en tête du devis |
 | REQ-917 | **Cotes affichables en 3D** (toggle « dimensions »). | Basse | ⬜ |
 | REQ-918 | **Undo/redo**. | Moyenne | ⬜ |
 | REQ-919 | **Version anglaise** (marché bilingue). | Basse | ⬜ |

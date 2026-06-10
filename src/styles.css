@@ -380,6 +380,29 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
 .popover-opts button.deny { animation: deny .3s; background: rgba(192,57,43,.16) !important; }
 @keyframes deny { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 
+/* Actions de la barre supérieure (photo HD, partage) */
+.top-action {
+  width: 38px; height: 38px; border-radius: 50%; font-size: 16px;
+  background: rgba(var(--paper-rgb), .92); border: 1px solid var(--line);
+  display: grid; place-items: center; transition: all .2s;
+}
+.top-action:hover { transform: translateY(-1px); border-color: rgba(var(--brass-rgb), .6); }
+
+/* Toast de confirmation */
+.toast {
+  position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+  z-index: 70; padding: 11px 20px; border-radius: 999px;
+  background: rgba(var(--ink-rgb), .92); color: var(--paper);
+  font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+}
+.toast.show { animation: toastIn 2.6s ease forwards; }
+@keyframes toastIn {
+  0% { opacity: 0; transform: translate(-50%, 12px); }
+  8%, 85% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -6px); }
+}
+
 /* ————— Capture de lead ————— */
 .lead-overlay {
   position: fixed; inset: 0; z-index: 80;
