@@ -13,6 +13,7 @@ import { getTenant, getTheme } from './tenant.js';
 import { findSku, fillerSku, IN } from './skuCatalog.js';
 import { windowViewTexture } from './textures.js';
 import { cut, nearestIn, overlaps1D } from './intervals.js';
+import { getAsset, getLoadedAssetMaterials, hasAsset } from './assets3d.js';
 import {
   DOOR_MARGIN, WIN_MARGIN, UPPER_WIN_MARGIN,
   hoodHalfZone, hoodHalfClear, HOOD_WIN_GAP,
@@ -163,7 +164,9 @@ function buildBase(w, type, mats, manifest, widthIn = null, hinge = null) {
   const S = fixedMats();
 
   if (type === 'cuisiniere') {
-    g.add(buildRange(w, applianceMat));
+    // GLB photoréaliste si disponible, sinon le modèle procédural (repli
+    // pendant le chargement, ou définitif si le fichier manque)
+    g.add(getAsset('cuisiniere', w, COUNTER_TOP, BASE_D + 0.05) || buildRange(w, applianceMat));
     return g;
   }
 
@@ -882,7 +885,9 @@ function mergeStatic(container, skip = new Set()) {
   container.updateWorldMatrix(true, true);
   const inv = new THREE.Matrix4().copy(container.matrixWorld).invert();
   container.traverse((o) => {
-    if (!o.isMesh || o.userData.editable || Array.isArray(o.material)) return;
+    // les assets GLB (userData.sharedAsset) gardent leur mesh : leur géométrie
+    // est partagée avec le cache d'assets3d — la fusionner ici la détruirait
+    if (!o.isMesh || o.userData.editable || o.userData.sharedAsset || Array.isArray(o.material)) return;
     for (let p = o; p && p !== container; p = p.parent) if (skip.has(p)) return;
     const attrs = Object.keys(o.geometry.attributes).sort().join(',');
     const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${attrs}`;
@@ -996,6 +1001,8 @@ export function buildKitchen(state) {
   matMap.set(S.sinkSteel, { type: 'sink' });
   matMap.set(S.fireclay, { type: 'sink' });
   matMap.set(applianceMat, { type: 'appliance' });
+  // les matériaux des GLB chargés (assets3d) ouvrent l'éditeur d'électros
+  for (const m of getLoadedAssetMaterials()) matMap.set(m, { type: 'appliance' });
 
   // ——— murs porteurs de caissons selon la forme ———
   const cabWalls = galley ? ['back', 'front']
@@ -2214,7 +2221,8 @@ export function buildKitchen(state) {
     }
   }
   // REQ-913 : torchon — suspendu à la barre du four, sinon plié près de l'évier
-  if (placed.cuisiniere && !placed.cuisiniere.isl && !placed.cuisiniere.plaque) {
+  // (pas sur la cuisinière GLB : sa barre n'est pas au même plan, le torchon clipperait)
+  if (placed.cuisiniere && !placed.cuisiniere.isl && !placed.cuisiniere.plaque && !hasAsset('cuisiniere')) {
     const p = centeredPlacement(placed.cuisiniere.wall, placed.cuisiniere.along - 0.16, 0.712);
     const t = D.towel(true);
     t.position.copy(p.pos);
@@ -2587,7 +2595,9 @@ export function buildKitchen(state) {
 
 export function disposeKitchen(group) {
   group.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
+    // la géométrie des assets GLB est partagée avec le cache (assets3d) :
+    // la libérer casserait toutes les reconstructions suivantes
+    if (o.geometry && !o.userData.sharedAsset) o.geometry.dispose();
     // matériaux mis en cache et partagés : on ne les libère pas —
     // seuls les matériaux transitoires du calque plan sont détruits
     const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];

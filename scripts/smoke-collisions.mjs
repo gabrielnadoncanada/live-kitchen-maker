@@ -41,6 +41,7 @@ globalThis.window = {
   innerWidth: 1280,
   innerHeight: 800,
 };
+globalThis.__DISABLE_GLB_ASSETS__ = true; // pas de fetch d'assets en Node
 
 const { buildKitchen } = await import('../src/kitchen.js');
 const { state, setState } = await import('../src/state.js');

@@ -2,6 +2,7 @@ import './styles.css';
 import * as THREE from 'three';
 import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
+import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
 import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast } from './ui.js';
@@ -61,6 +62,10 @@ ctx.setTick(() => {
     w.group.visible = tmpV.dot(w.normal) > -0.02;
   }
 });
+
+// un asset GLB qui finit de charger remplace son repli procédural au
+// prochain rebuild (patch vide → le subscribe debounce fait le reste)
+setAssetReadyCallback(() => setState({}));
 
 let rebuildTimer = null;
 let lastRebuild = 0;
