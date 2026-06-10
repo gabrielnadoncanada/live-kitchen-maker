@@ -161,15 +161,28 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
   if (v) ctx.flyTo(v.pos, v.tgt, 1.3);
 });
 
-// ————— sélection de module (clic) —————
+// ————— sélection de module / surface (tap franc seulement) —————
+// Tout est touchable : il faut donc filtrer sévèrement ce qui compte comme un
+// « tap ». Au doigt : court (< 400 ms), immobile (< 10 px), et jamais en chaîne
+// (un éditeur déjà ouvert se ferme au tap suivant au lieu d'en ouvrir un autre).
 let downAt = null;
-canvas.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerdown', (e) => {
+  downAt = { x: e.clientX, y: e.clientY, t: performance.now(), touch: e.pointerType === 'touch' };
+});
 canvas.addEventListener('pointerup', (e) => {
   if (!downAt) return;
-  const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
+  const d = downAt;
   downAt = null;
-  if (moved > 6) return; // c'était une rotation de caméra
-  if (planEd.mode() === 'plan') return; // l'éditeur de plan gère ses propres clics
+  const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
+  const held = performance.now() - d.t;
+  if (moved > (d.touch ? 10 : 6)) return; // c'était une rotation de caméra
+  if (d.touch && held > 400) return;      // appui long = manipulation, pas un choix
+  if (planEd.mode() === 'plan') return;   // l'éditeur de plan gère ses propres clics
+  if (d.touch && !document.getElementById('popover').hidden) {
+    hidePopover();
+    clearOutline();
+    return;
+  }
   pickModule(e.clientX, e.clientY);
 });
 
