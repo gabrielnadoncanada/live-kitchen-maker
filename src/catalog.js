@@ -30,7 +30,7 @@ function lacquer(color, { sheen = false } = {}) {
 function woodMat(opts, rough = 0.62) {
   const t = woodTexture(opts);
   return new THREE.MeshPhysicalMaterial({
-    map: t.map, bumpMap: t.bumpMap, bumpScale: 0.35,
+    map: t.map, bumpMap: t.bumpMap, bumpScale: 0.12,
     roughness: rough, metalness: 0, clearcoat: 0.18, clearcoatRoughness: 0.5,
   });
 }
@@ -67,15 +67,15 @@ export const CABINET_FINISHES = {
   },
   'chene-naturel': {
     label: 'Chêne naturel', swatch: 'wood:#c8a06c', group: 'Bois véritable', mult: 1.45,
-    make: () => cached('c-chene', () => woodMat({ base: '#c09a68', dark: '#9a7549', light: '#dab685', seed: 12, ringScale: 30 })),
+    make: () => cached('c-chene', () => woodMat({ base: '#c09a68', dark: '#9a7549', light: '#dab685', seed: 12, ringScale: 8 })),
   },
   'chene-fume': {
     label: 'Chêne fumé', swatch: 'wood:#8a6a48', group: 'Bois véritable', mult: 1.5,
-    make: () => cached('c-fume', () => woodMat({ base: '#85664a', dark: '#5d4430', light: '#a3825e', seed: 19, ringScale: 30 })),
+    make: () => cached('c-fume', () => woodMat({ base: '#85664a', dark: '#5d4430', light: '#a3825e', seed: 19, ringScale: 8 })),
   },
   'noyer': {
     label: 'Noyer huilé', swatch: 'wood:#6b4a30', group: 'Bois véritable', mult: 1.6,
-    make: () => cached('c-noyer', () => woodMat({ base: '#64452c', dark: '#3f2a18', light: '#8a6442', seed: 5, ringScale: 40 })),
+    make: () => cached('c-noyer', () => woodMat({ base: '#64452c', dark: '#3f2a18', light: '#8a6442', seed: 5, ringScale: 9 })),
   },
 };
 
@@ -277,6 +277,7 @@ export const MODULE_PRICES = {
   'panneau-frigo': { label: 'Panneau de finition (réfrigérateur)', price: 165 },
   'mur': { label: 'Armoire murale', price: 289 },
   'garde-manger': { label: 'Garde-manger pleine hauteur', price: 949 },
+  'couronne': { label: 'Moulure couronne (96 po)', price: 92 },
   'ilot-module': { label: 'Module d’îlot', price: 469 },
   'hotte-coffrage': { label: 'Coffrage de hotte', price: 0 },
 };

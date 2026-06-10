@@ -172,17 +172,17 @@ travail. Classés par impact sur la crédibilité.
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-901 | **Plafond** : dès qu'on lève les yeux, la moitié de l'écran est un vide noir ; les cordons des suspensions et la cheminée de hotte montent dans le néant. Plafond blanc obligatoire (avec occlusion caméra façon « maison de poupée »). | **Critique** | ⬜ |
-| REQ-902 | **Éclairage au plafond** : aucun luminaire hors îlot — spots encastrés alignés sur les zones de travail, avec vraie contribution lumineuse. | Haute | ⬜ |
-| REQ-903 | **Vue par la fenêtre** : la vitre est un panneau lumineux uniforme — aucune profondeur. Un extérieur simple (ciel dégradé + silhouettes) changerait tout. | Haute | ⬜ |
-| REQ-904 | **Plinthes murales sur tous les murs** (uniquement le mur arrière actuellement). | Moyenne | ⬜ |
-| REQ-905 | **Prises et interrupteurs sur le dosseret** (code : prises aux 4 pi de comptoir) — le détail qui fait « vrai ». | Moyenne | ⬜ |
+| REQ-901 | **Plafond** : dès qu'on lève les yeux, la moitié de l'écran est un vide noir ; les cordons des suspensions et la cheminée de hotte montent dans le néant. Plafond blanc obligatoire (avec occlusion caméra façon « maison de poupée »). | **Critique** | ✅ plafond blanc, même logique maison de poupée (s'efface vu de dessus, vue plan comprise), sans ombre portée pour laisser entrer le soleil |
+| REQ-902 | **Éclairage au plafond** : aucun luminaire hors îlot — spots encastrés alignés sur les zones de travail, avec vraie contribution lumineuse. | Haute | ✅ spots (anneau + lentille) alignés sur chaque rangée de caissons + un point de lumière chaude par rangée |
+| REQ-903 | **Vue par la fenêtre** : la vitre est un panneau lumineux uniforme — aucune profondeur. Un extérieur simple (ciel dégradé + silhouettes) changerait tout. | Haute | ✅ texture vue extérieure : ciel dégradé, halo de soleil, nuages, double ligne d'arbres floutée |
+| REQ-904 | **Plinthes murales sur tous les murs** (uniquement le mur arrière actuellement). | Moyenne | ✅ murs latéraux + mur avant (couloir) |
+| REQ-905 | **Prises et interrupteurs sur le dosseret** (code : prises aux 4 pi de comptoir) — le détail qui fait « vrai ». | Moyenne | ✅ prises tous les ~1,2 m de dosseret, hors zone cuisson |
 
 ### Produits catalogue absents du configurateur (mais vendus par Dilamco)
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-906 | **Moulure couronne** en haut des armoires murales — au catalogue, demande client n°1 ; le haut des murales finit à nu. | Haute | ⬜ |
+| REQ-906 | **Moulure couronne** en haut des armoires murales — au catalogue, demande client n°1 ; le haut des murales finit à nu. | Haute | ✅ couronne sur rubans muraux, coin aveugle et colonnes ; facturée en longueurs de 96 po (ligne générique — pas de SKU couronne dans l'extrait catalogue) |
 | REQ-907 | **Valance lumineuse** sous les murales (cache la bande LED — produit moulure). | Basse | ⬜ |
 | REQ-908 | **Évier farmhouse** (FSBC33/36 au catalogue) + choix simple/double cuve + 2-3 styles de robinets. | Moyenne | ⬜ |
 | REQ-909 | **Panneau d'extrémité mural** (WEP) sur les bouts de murales exposés — l'équivalent haut de la fausse porte des bas. | Moyenne | ⬜ |
@@ -192,7 +192,7 @@ travail. Classés par impact sur la crédibilité.
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-911 | **Bois trop strié en gros plan** (effet tôle ondulée, surtout le noyer) : décaler les UV aléatoirement par porte, réduire le contraste du grain. | Haute | ⬜ |
+| REQ-911 | **Bois trop strié en gros plan** (effet tôle ondulée, surtout le noyer) : décaler les UV aléatoirement par porte, réduire le contraste du grain. | Haute | ✅ anneaux irréguliers (ondulation + phase bruitées), contraste et bump réduits, UV décalées porte par porte, UV du panneau d'îlot détendues |
 | REQ-912 | **Profil de chant du comptoir** (eased/bullnose) — les arêtes sont vives. | Basse | ⬜ |
 
 ### Mise en scène (vendre le rêve)

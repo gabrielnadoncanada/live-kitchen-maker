@@ -58,16 +58,18 @@ export function woodTexture({ base = '#9a6b42', dark = '#6e4527', light = '#b98a
     for (let x = 0; x < S; x++) {
       const u = vertical ? x : y, v = vertical ? y : x;
       // veinage : ondulation légère du grain le long de la planche
-      const wob = noise(u / 90, v / 260) * 5 + noise(u / 22, v / 70) * 1.6;
-      const ring = Math.sin((u + wob) / S * Math.PI * ringScale + noise(u / 200, v / 200) * 1.4);
-      const fine = noise(u / 3, v / 110) * 0.26;
+      // ondulation forte + phase bruitée : des anneaux irréguliers, pas des rayures
+      const wob = noise(u / 90, v / 260) * 14 + noise(u / 22, v / 70) * 2.4;
+      const ring = Math.sin((u + wob) / S * Math.PI * ringScale + noise(u / 200, v / 200) * 3.2);
+      const fine = noise(u / 3, v / 110) * 0.12;
       let t = ring * 0.5 + 0.5;
-      t = Math.pow(t, 1.6) + fine - 0.15;
-      const f = Math.max(0, Math.min(1, t));
+      // REQ-911 : contraste adouci — le grain reste lisible sans effet « tôle ondulée »
+      t = Math.pow(t, 1.15) + fine - 0.08;
+      const f = 0.22 + Math.max(0, Math.min(1, t)) * 0.56;
       const r = lerp3(cDark, cBase, cLight, f);
       const i = (y * S + x) * 4;
       img.data[i] = r[0]; img.data[i + 1] = r[1]; img.data[i + 2] = r[2]; img.data[i + 3] = 255;
-      const b = 120 + (f - 0.5) * 140 + (rng() - 0.5) * 14;
+      const b = 120 + (f - 0.5) * 56 + (rng() - 0.5) * 8;
       imgB.data[i] = imgB.data[i + 1] = imgB.data[i + 2] = b; imgB.data[i + 3] = 255;
     }
   }
@@ -312,6 +314,67 @@ export function paintTexture({ base = '#e8e2d6', seed = 4 } = {}) {
   }
   ctx.putImageData(img, 0, 0);
   const out = { map: tex(c, { repeat: [2, 2] }) };
+  cache.set(key, out);
+  return out;
+}
+
+// ———— VUE PAR LA FENÊTRE (REQ-903) : ciel dégradé + silhouettes lointaines ————
+export function windowViewTexture({ seed = 4 } = {}) {
+  const key = `winview|${seed}`;
+  if (cache.has(key)) return cache.get(key);
+  const S = 512;
+  const [c, ctx] = canvas(S);
+  const rng = mulberry(seed);
+  // ciel
+  const sky = ctx.createLinearGradient(0, 0, 0, S);
+  sky.addColorStop(0, '#8fc1ea');
+  sky.addColorStop(0.5, '#cde5f7');
+  sky.addColorStop(0.75, '#eef6f3');
+  sky.addColorStop(1, '#eef0e0');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, S, S);
+  // halo de soleil
+  const gx = S * 0.66, gy = S * 0.2;
+  const glow = ctx.createRadialGradient(gx, gy, 6, gx, gy, S * 0.42);
+  glow.addColorStop(0, 'rgba(255,248,222,0.95)');
+  glow.addColorStop(1, 'rgba(255,248,222,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, S, S);
+  // nuages doux
+  for (let i = 0; i < 7; i++) {
+    const cx = rng() * S, cy = S * (0.06 + rng() * 0.3), r = 26 + rng() * 55;
+    const cg = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+    cg.addColorStop(0, 'rgba(255,255,255,0.5)');
+    cg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = cg;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
+  // silhouettes : flou « profondeur de champ » — on regarde dehors, net dedans
+  ctx.filter = 'blur(5px)';
+  // ligne d'arbres lointaine
+  ctx.fillStyle = 'rgba(124,146,120,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(0, S);
+  ctx.lineTo(0, S * 0.7);
+  for (let x = 0; x <= S; x += 24) {
+    ctx.quadraticCurveTo(x + 12, S * (0.6 + rng() * 0.1), x + 24, S * (0.68 + rng() * 0.06));
+  }
+  ctx.lineTo(S, S);
+  ctx.closePath();
+  ctx.fill();
+  // haie plus proche, plus sombre
+  ctx.fillStyle = 'rgba(92,112,88,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(0, S);
+  ctx.lineTo(0, S * 0.86);
+  for (let x = 0; x <= S; x += 36) {
+    ctx.quadraticCurveTo(x + 18, S * (0.8 + rng() * 0.05), x + 36, S * (0.85 + rng() * 0.04));
+  }
+  ctx.lineTo(S, S);
+  ctx.closePath();
+  ctx.fill();
+  ctx.filter = 'none';
+  const out = { map: tex(c) };
   cache.set(key, out);
   return out;
 }

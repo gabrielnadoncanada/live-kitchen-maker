@@ -10,6 +10,7 @@ import {
 } from './catalog.js';
 import { getTenant, getTheme } from './tenant.js';
 import { findSku, fillerSku, IN } from './skuCatalog.js';
+import { windowViewTexture } from './textures.js';
 
 // ——— dimensions normalisées (m) ———
 const PLINTH = 0.1;
@@ -46,7 +47,11 @@ function fixedMats() {
   shared.white = new THREE.MeshStandardMaterial({ color: '#f1ede4', roughness: 0.6 });
   shared.doorWhite = new THREE.MeshStandardMaterial({ color: '#f2efe7', roughness: 0.55 });
   shared.glow = new THREE.MeshBasicMaterial({ color: '#fff3da' });
-  shared.skyGlow = new THREE.MeshBasicMaterial({ color: '#eaf3fb' });
+  // REQ-903 : la vitre montre un extérieur (ciel + silhouettes), plus un panneau plat
+  shared.skyGlow = new THREE.MeshBasicMaterial({ map: windowViewTexture().map });
+  shared.ceiling = new THREE.MeshStandardMaterial({ color: '#f2efe7', roughness: 0.95 });
+  shared.outletPlate = new THREE.MeshStandardMaterial({ color: '#eceadf', roughness: 0.55 });
+  shared.outletDark = new THREE.MeshStandardMaterial({ color: '#d6d2c6', roughness: 0.5 });
   shared.plantGreen = new THREE.MeshStandardMaterial({ color: '#4a6b3f', roughness: 0.85 });
   shared.plantGreen2 = new THREE.MeshStandardMaterial({ color: '#5d8049', roughness: 0.85 });
   shared.potClay = new THREE.MeshStandardMaterial({ color: '#a8765a', roughness: 0.9 });
@@ -84,6 +89,7 @@ function cyl(r, h, mat, x = 0, y = 0, z = 0, seg = 20) {
 }
 
 // ——— façades ———
+let grainSeq = 0; // REQ-911 : chaque porte décale son grain (fini l'effet tôle ondulée)
 function makeFront(w, h, mat, style) {
   const g = new THREE.Group();
   if (style === 'shaker' && w > 0.24 && h > 0.22) {
@@ -96,6 +102,14 @@ function makeFront(w, h, mat, style) {
   } else {
     g.add(box(w, h, DOOR_T, mat));
   }
+  grainSeq = (grainSeq + 1) % 97;
+  const du = (grainSeq * 0.137) % 1, dv = (grainSeq * 0.211) % 1;
+  g.traverse((m) => {
+    const uv = m.geometry && m.geometry.attributes && m.geometry.attributes.uv;
+    if (!uv) return;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + du, uv.getY(i) + dv);
+    uv.needsUpdate = true;
+  });
   return g;
 }
 
@@ -817,6 +831,9 @@ export function buildKitchen(state) {
   // plinthe du mur arrière (entre les faces intérieures des murs latéraux)
   const skirt = new THREE.MeshStandardMaterial({ color: '#efebe2', roughness: 0.7 });
   wallGroups.back.add(box(rightX - leftX - 0.12, 0.09, 0.016, skirt, (leftX + rightX) / 2, 0.045, 0.008));
+  // REQ-904 : plinthes murales sur les murs latéraux aussi
+  wallGroups.left.add(box(0.016, 0.09, roomD - 0.02, skirt, leftX + 0.068, 0.045, roomD / 2));
+  wallGroups.right.add(box(0.016, 0.09, roomD - 0.02, skirt, rightX - 0.068, 0.045, roomD / 2));
   // REQ-1005 : mur avant du couloir — masqué par la « maison de poupée » quand
   // la caméra est devant (position par défaut)
   if (galley) {
@@ -825,6 +842,39 @@ export function buildKitchen(state) {
     wallGroups.front.add(fWall);
     wallGroups.front.add(box(rightX - leftX - 0.12, 0.09, 0.016, skirt, (leftX + rightX) / 2, 0.045, roomD - 0.008));
     walls.push({ group: wallGroups.front, point: new THREE.Vector3(0, 1, roomD / 2), normal: new THREE.Vector3(0, 0, -1) });
+  }
+
+  // REQ-901 : plafond — même logique « maison de poupée » : il s'efface dès que
+  // la caméra passe au-dessus (vue plan comprise). Il ne projette pas d'ombre,
+  // sinon il bloquerait le soleil.
+  // REQ-902 : spots encastrés alignés sur les zones de travail, avec une vraie
+  // contribution lumineuse (un point de lumière par rangée de caissons).
+  {
+    const cg = new THREE.Group();
+    const ceil = box(exR - exL, 0.06, floorZ1 - floorZ0, S.ceiling, (exL + exR) / 2, ROOM_H + 0.03, (floorZ0 + floorZ1) / 2);
+    ceil.castShadow = false;
+    ceil.receiveShadow = false;
+    cg.add(ceil);
+    for (const wk of cabWalls) {
+      const len = wallLen[wk];
+      const n = Math.max(2, Math.round(len / 1.3));
+      for (let i = 0; i < n; i++) {
+        const along = (len * (i + 0.5)) / n;
+        const r = rectFor(wk, along, along, 0.62, 0.62);
+        const ring = cyl(0.062, 0.014, S.darkMetal, r.x, ROOM_H - 0.004, r.z);
+        ring.castShadow = false;
+        const lens = cyl(0.045, 0.008, S.glow, r.x, ROOM_H - 0.013, r.z);
+        lens.castShadow = false;
+        cg.add(ring, lens);
+        if (i === Math.floor(n / 2)) {
+          const pl = new THREE.PointLight('#ffe3bd', 1.6, 4.2, 2);
+          pl.position.set(r.x, ROOM_H - 0.18, r.z);
+          cg.add(pl);
+        }
+      }
+    }
+    inner.add(cg);
+    walls.push({ group: cg, point: new THREE.Vector3(0, ROOM_H, 0), normal: new THREE.Vector3(0, -1, 0) });
   }
 
   manifest.floorArea = a * roomD;
@@ -1069,6 +1119,7 @@ export function buildKitchen(state) {
   }
   const placedIntervals = { back: [], left: [], right: [], front: [] }; // REQ-803 : filet AABB
   let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
+  let crownLin = 0;  // REQ-906 : linéaire de moulure couronne
 
   function layWall(wallKey) {
     const segs = segsByWall[wallKey] || [];
@@ -1425,6 +1476,12 @@ export function buildKitchen(state) {
     for (const [s0, s1] of spans) {
       addBoxRect(wk, s0, s1, 0.004, 0.018, COUNTER_TOP, WALL_BOT, backsplashMat);
       manifest.backsplashArea += (s1 - s0) * bsH;
+      // REQ-905 : prises électriques aux ~1,2 m de comptoir (code), hors zone cuisson
+      for (let p = s0 + 0.55; p < s1 - 0.3; p += 1.2) {
+        if (placed.cuisiniere && placed.cuisiniere.wall === wk && Math.abs(p - placed.cuisiniere.along) < 0.55) continue;
+        addBoxRect(wk, p - 0.035, p + 0.035, 0.019, 0.031, COUNTER_TOP + 0.12, COUNTER_TOP + 0.245, S.outletPlate);
+        addBoxRect(wk, p - 0.016, p + 0.016, 0.019, 0.035, COUNTER_TOP + 0.15, COUNTER_TOP + 0.215, S.outletDark);
+      }
     }
   }
 
@@ -1461,6 +1518,10 @@ export function buildKitchen(state) {
     g.add(strip);
     g.position.set(x0, WALL_BOT, 0);
     inner.add(g);
+    // REQ-906 : couronne sur le coin aveugle aussi
+    addBoxRect('back', x0 - 0.01, x0 + WBC_W + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
+      WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
+    crownLin += WBC_W;
     const s = findSku('wallBlindCorner', 30);
     if (!manifest.addSku(s, 'Coin aveugle mural 30 po', { zone: 'upper' })) manifest.add('mur');
     return true;
@@ -1498,6 +1559,10 @@ export function buildKitchen(state) {
     if (placed.four && placed.four.wall === wk) zones = cut(zones, placed.four.along - placed.four.w / 2 - 0.004, placed.four.along + placed.four.w / 2 + 0.004);
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
+      // REQ-906 : moulure couronne sur le dessus du ruban d'armoires murales
+      addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
+        WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
+      crownLin += z1 - z0;
       let cx = z0;
       for (const piece of catalogWidths(z1 - z0)) {
         const pl = modulePlacement(wk, cx, piece.w, WALL_BOT);
@@ -1519,6 +1584,14 @@ export function buildKitchen(state) {
         cx += piece.w;
       }
     }
+  }
+
+  // REQ-906 : couronne sur le dessus des colonnes (frigo, garde-manger, four)
+  for (const tall of [placed.frigo, placed.pantry, placed.four]) {
+    if (!tall) continue;
+    addBoxRect(tall.wall, tall.along - tall.w / 2 - 0.01, tall.along + tall.w / 2 + 0.01,
+      PANTRY_D - 0.03, PANTRY_D + 0.045, TALL_H, TALL_H + 0.07, finish);
+    crownLin += tall.w;
   }
 
   // ——— îlot / péninsule (géométrie résolue plus haut) ———
@@ -1604,7 +1677,7 @@ export function buildKitchen(state) {
     const skin = findSku('islandSkinPanel');
     manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
     if (!peninsula) manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
-    ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
+    ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 1.4));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
     if (!peninsula) {
       ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
@@ -1920,6 +1993,8 @@ export function buildKitchen(state) {
     const longueurs = Math.ceil(plinthLin / 2.44);
     for (let i = 0; i < longueurs; i++) manifest.addSku(tk, 'Plinthe (toe-kick) 96 po', { finishMult: false });
   }
+  // REQ-906 : la couronne aussi (pas encore de SKU catalogue — ligne générique)
+  if (crownLin > 0.1) manifest.add('couronne', Math.ceil(crownLin / 2.44));
 
   // REQ-803 : filet AABB — en dev, signale tout chevauchement de caissons sur un mur
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
