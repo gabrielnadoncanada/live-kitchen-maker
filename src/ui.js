@@ -414,9 +414,9 @@ export function buildPanel() {
   root.append(s3);
 
   // 4 · VOTRE PIÈCE (contraintes réelles) — replié : réglage avancé
-  const s2b = section('04', 'Votre pièce', 'Reproduisez la réalité : plomberie, fenêtres, portes. La cuisine se replanifie autour.', { collapsed: true });
-  s2b.append(fixtureControl('water', 'Entrée d’eau (évier)', 'L’évier se place sur la plomberie existante.'));
-  s2b.append(fixtureControl('stove', 'Prise de cuisinière (240 V)', 'La cuisinière et sa hotte suivent la prise.'));
+  const s2b = section('04', 'Votre pièce', 'Placez vos appareils, fenêtres et portes — la cuisine se replanifie autour.', { collapsed: true });
+  s2b.append(fixtureControl('water', 'Position de l’évier', 'Idéalement sur votre plomberie existante.'));
+  s2b.append(fixtureControl('stove', 'Position de la cuisinière', 'La hotte suit. Idéalement sur votre prise 240 V existante.'));
   s2b.append(openingsEditor('fenetre', 'Fenêtres', 'Ajouter une fenêtre', 0.6, 2.4, 1.25, 3));
   s2b.append(openingsEditor('porte', 'Portes et passages', 'Ajouter une porte', 0.7, 1.8, 0.85, 2));
   root.append(s2b);

@@ -26,9 +26,9 @@ URLs : `/` (configurateur), `/?client=cle` (marque blanche), `/admin.html` (boî
   dimensions au curseur. Évier sous fenêtre, lave-vaisselle adjacent, cuisinière avec hotte,
   réfrigérateur + garde-manger en bout de ruban, caissons de coin, armoires murales — tout se
   replanifie automatiquement.
-- **Contraintes réelles de la pièce** (section « Votre pièce ») : entrée d'eau (l'évier se place
-  sur la plomberie existante, sur n'importe quel mur), prise 240 V (la cuisinière et sa hotte
-  suivent), fenêtres et portes positionnables librement sur chaque mur. Les portes créent des
+- **Contraintes réelles de la pièce** (section « Votre pièce ») : position de l'évier
+  (idéalement sur la plomberie existante, sur n'importe quel mur), position de la cuisinière
+  (sa hotte suit), fenêtres et portes positionnables librement sur chaque mur. Les portes créent des
   zones interdites qui segmentent caissons, comptoirs et dosserets ; les fenêtres bloquent les
   armoires murales. Un solveur à deux niveaux reloge les éléments (frigo, garde-manger,
   lave-vaisselle…) vers un autre segment ou un autre mur quand la place manque, par ordre de
@@ -43,15 +43,15 @@ URLs : `/` (configurateur), `/?client=cle` (marque blanche), `/admin.html` (boî
 - **Édition par clic** : cliquer un caisson dans la 3D ouvre un popover pour le convertir
   (portes / tiroirs / niche ouverte).
 - **Vue Plan interactive** (manipulation directe, sans dessin libre) : en vue Plan, glissez
-  les fenêtres, portes, l'entrée d'eau et la prise 240 V le long des murs (changement de mur
-  automatique au plus proche), étirez les murs par leurs poignées ⟷, cliquez un mur vide pour
-  ajouter « Fenêtre / Porte / Entrée d'eau / Prise » à cet endroit, cliquez un élément pour le
-  retirer ou le remettre en automatique. La cuisine se replanifie en direct pendant le drag
+  les fenêtres, portes et appareils (évier, cuisinière, frigo, lave-vaisselle) le long des murs
+  (changement de mur automatique au plus proche), étirez les murs par leurs poignées ⟷, cliquez
+  un mur vide pour ajouter « Fenêtre / Porte / Évier / Cuisinière » à cet endroit, cliquez un
+  élément pour le retirer ou le remettre en automatique. La cuisine se replanifie en direct pendant le drag
   (reconstruction throttlée ~7 fps) et les cotes s'affichent sur chaque mur. Le drag est
   contraint : aucun état invalide possible.
 - **Vue Élévation (mur de face)** : depuis le menu d'un mur, « 👁 Voir ce mur de face » place la
-  caméra perpendiculaire au mur, cadrée sur sa longueur. Les fenêtres, portes, entrée d'eau et
-  prise y apparaissent en surlignages glissables à leur hauteur réelle ; un clic sur une zone
+  caméra perpendiculaire au mur, cadrée sur sa longueur. Les fenêtres, portes, l'évier et la
+  cuisinière y apparaissent en surlignages glissables à leur hauteur réelle ; un clic sur une zone
   vide du mur ajoute un élément à cet endroit précis. L'îlot (tabourets, suspensions) est
   automatiquement masqué pour ne pas boucher la vue, et réapparaît en sortant.
   Bouton « ↩ Vue du dessus » pour revenir.

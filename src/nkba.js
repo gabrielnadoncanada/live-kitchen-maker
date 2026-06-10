@@ -33,7 +33,7 @@ export function computeNkbaWarnings(nkba) {
     const noms = { frigo: 'le réfrigérateur', dw: 'le lave-vaisselle', cuisiniere: 'la cuisinière' };
     for (const [k, label] of Object.entries(noms)) {
       if (nkba.wanted[k] && !placed[k]) {
-        out.push({ id: 'PLACEMENT', msg: `Impossible de placer ${label} avec ces contraintes (plomberie, prise, fenêtres, portes) — élargissez un mur ou déplacez une contrainte.` });
+        out.push({ id: 'PLACEMENT', msg: `Impossible de placer ${label} avec ces contraintes (position des appareils, fenêtres, portes) — élargissez un mur ou déplacez un élément.` });
       }
     }
   }

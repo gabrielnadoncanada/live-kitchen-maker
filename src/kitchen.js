@@ -2201,10 +2201,10 @@ export function buildKitchen(state) {
     planPick.push(disc);
   }
   if (placed.evier && !placed.evier.isl) {
-    discMarker('#3f86c9', '💧 Eau', { plan: 'water' }, pointFor(placed.evier.wall, placed.evier.along, 0.33, PLAN_Y));
+    discMarker('#3f86c9', '💧 Évier', { plan: 'water' }, pointFor(placed.evier.wall, placed.evier.along, 0.33, PLAN_Y));
   }
   if (placed.cuisiniere && !placed.cuisiniere.isl) {
-    discMarker('#d9763a', '⚡ 240 V', { plan: 'stove' }, pointFor(placed.cuisiniere.wall, placed.cuisiniere.along, 0.3, PLAN_Y));
+    discMarker('#d9763a', '🍳 Cuisinière', { plan: 'stove' }, pointFor(placed.cuisiniere.wall, placed.cuisiniere.along, 0.3, PLAN_Y));
   }
   // REQ-1008 : frigo et lave-vaisselle se déplacent au doigt en vue plan
   if (placed.frigo) {
@@ -2308,10 +2308,10 @@ export function buildKitchen(state) {
       elevPick.push(disc);
     }
     if (placed.evier && !placed.evier.isl) {
-      elevDisc(placed.evier.wall, placed.evier.along, 0.55, '#3f86c9', '💧 Eau', { elev: 'water', wall: placed.evier.wall });
+      elevDisc(placed.evier.wall, placed.evier.along, 0.55, '#3f86c9', '💧 Évier', { elev: 'water', wall: placed.evier.wall });
     }
     if (placed.cuisiniere && !placed.cuisiniere.isl) {
-      elevDisc(placed.cuisiniere.wall, placed.cuisiniere.along, 0.42, '#d9763a', '⚡ 240 V', { elev: 'stove', wall: placed.cuisiniere.wall });
+      elevDisc(placed.cuisiniere.wall, placed.cuisiniere.along, 0.42, '#d9763a', '🍳 Cuisinière', { elev: 'stove', wall: placed.cuisiniere.wall });
     }
   }
 

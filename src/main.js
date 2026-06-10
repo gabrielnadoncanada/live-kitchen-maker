@@ -153,7 +153,7 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
   planEd.setMode(view);
   if (hintChip) {
     hintChip.textContent = view === 'plan'
-      ? '✏️ Glissez fenêtres, portes, eau · cliquez un mur pour ajouter'
+      ? '✏️ Glissez appareils, fenêtres et portes · cliquez un mur pour ajouter'
       : '💡 Cliquez sur un meuble pour le modifier';
   }
   // en mobile, les vues Plan/Détail ont besoin de tout l'écran

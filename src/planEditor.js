@@ -239,11 +239,11 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
     }
     if (f.cabWalls.includes(wallKey)) {
       opts.push({
-        ico: '💧', label: 'Entrée d’eau ici',
+        ico: '💧', label: 'Évier ici',
         onPick: () => setState({ constraints: { water: { auto: false, wall: wallKey, pos: round5(clampAlong(wallKey, along, 0.9, f)) } } }),
       });
       opts.push({
-        ico: '⚡', label: 'Prise cuisinière ici',
+        ico: '🍳', label: 'Cuisinière ici',
         onPick: () => setState({ constraints: { stove: { auto: false, wall: wallKey, pos: round5(clampAlong(wallKey, along, 0.77, f)) } } }),
       });
     }
@@ -266,7 +266,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
       ]);
     } else {
       const key = ud.plan || ud.elev;
-      const titles = { water: 'Entrée d’eau', stove: 'Prise cuisinière', fridge: 'Réfrigérateur', dw: 'Lave-vaisselle' };
+      const titles = { water: 'Évier', stove: 'Cuisinière', fridge: 'Réfrigérateur', dw: 'Lave-vaisselle' };
       if (!titles[key]) return;
       const cur = state.constraints[key];
       if (!cur) return;
