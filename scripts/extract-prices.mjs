@@ -80,6 +80,16 @@ const data = {
   farmhouseSinkBase: byWidth(sub('base-cabinet-farmhouse-sink')),
   // moulure de scribe (REQ-907 : la valance lumineuse se vend en longueurs de 96 po)
   scribeMolding: byWidth(sub('moldings-scribe-molding')),
+  // panneau d'extrémité mural (REQ-909) — indexé par HAUTEUR (30/36/48 po),
+  // assorti à la hauteur des murales (REQ-1007)
+  wallEndPanel: (() => {
+    const out = {};
+    for (const r of sub('wall-end-panel')) {
+      const h = num(r.h);
+      if (h) out[h] = { sku: skuOf(r), price: +r.price };
+    }
+    return out;
+  })(),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales
   filler: byWidth(sub('fillers-base-wall-tall-filler'), 30),
   // panneaux

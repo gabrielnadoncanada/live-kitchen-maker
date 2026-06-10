@@ -1639,6 +1639,21 @@ export function buildKitchen(state) {
   // REQ-908 : la cuve farmhouse est plus large et file jusqu'au bord avant du
   // comptoir (le tablier remplace la bande de chant devant la cuve)
   const holeW = SINK_FARM ? 0.74 : 0.56, holeD = SINK_FARM ? 0.5 : 0.44, holeD0 = 0.1;
+  // REQ-912 : profil de chant — adouci (arête supérieure cassée) ou bullnose
+  // (nez arrondi pleine épaisseur) le long des bords avant de comptoir
+  const edgeProf = state.counterEdge || 'adouci';
+  let edgeLin = 0;
+  function frontEdge(wk, e0, e1) {
+    if (edgeProf === 'vif' || e1 - e0 < 0.04) return;
+    const r = rectFor(wk, e0, e1, COUNTER_D, COUNTER_D);
+    const rad = edgeProf === 'bullnose' ? COUNTER_T / 2 - 0.001 : 0.009;
+    const y = edgeProf === 'bullnose' ? COUNTER_H + COUNTER_T / 2 : COUNTER_TOP - 0.009;
+    const c = cyl(rad, e1 - e0, counterMat, r.x, y, r.z, 24);
+    if (wk === 'left' || wk === 'right') c.rotation.x = Math.PI / 2;
+    else c.rotation.z = Math.PI / 2;
+    inner.add(c);
+    edgeLin += e1 - e0;
+  }
   for (const wk of cabWalls) {
     for (const [s0, s1] of counterSpans(wk)) {
       const hasSink = placed.evier && placed.evier.wall === wk &&
@@ -1648,9 +1663,17 @@ export function buildKitchen(state) {
         addBoxRect(wk, s0, hx0, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
         addBoxRect(wk, hx1, s1, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
         addBoxRect(wk, hx0, hx1, 0, holeD0, COUNTER_H, COUNTER_TOP, counterMat);
-        if (!SINK_FARM) addBoxRect(wk, hx0, hx1, holeD0 + holeD, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
+        if (SINK_FARM) {
+          // le tablier interrompt le chant devant la cuve
+          frontEdge(wk, s0, hx0);
+          frontEdge(wk, hx1, s1);
+        } else {
+          addBoxRect(wk, hx0, hx1, holeD0 + holeD, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
+          frontEdge(wk, s0, s1);
+        }
       } else {
         addBoxRect(wk, s0, s1, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
+        frontEdge(wk, s0, s1);
       }
       manifest.counterArea += (s1 - s0) * COUNTER_D;
     }
@@ -1761,8 +1784,36 @@ export function buildKitchen(state) {
     if (placed.frigo && placed.frigo.wall === wk) zones = cut(zones, placed.frigo.along - placed.frigo.w / 2 - 0.004, placed.frigo.along + placed.frigo.w / 2 + 0.004);
     if (placed.pantry && placed.pantry.wall === wk) zones = cut(zones, placed.pantry.along - placed.pantry.w / 2 - 0.004, placed.pantry.along + placed.pantry.w / 2 + 0.004);
     if (placed.four && placed.four.wall === wk) zones = cut(zones, placed.four.along - placed.four.w / 2 - 0.004, placed.four.along + placed.four.w / 2 + 0.004);
+    // REQ-909 : un bout de ruban qui bute contre un coin (aveugle ou perpendiculaire)
+    // ou une colonne plus profonde est abrité — tout autre bout expose son flanc
+    const shelters = [];
+    if (wk === 'back') {
+      if (hasCornerL) shelters.push(upLo);
+      if (hasCornerR) shelters.push(upHi);
+    } else if (wk === 'left' || wk === 'right') {
+      shelters.push(upLo);
+    }
+    for (const tall of [placed.frigo, placed.pantry, placed.four]) {
+      if (tall && tall.wall === wk) shelters.push(tall.along - tall.w / 2, tall.along + tall.w / 2);
+    }
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
+      // REQ-909 : panneau d'extrémité mural (WEP) sur chaque bout exposé,
+      // l'équivalent haut de la fausse porte de bout des bas (REQ-711)
+      for (const [end, side] of [[z0, 'debut'], [z1, 'fin']]) {
+        if (shelters.some((s2) => Math.abs(s2 - end) < 0.06)) continue;
+        const eg = new THREE.Group();
+        const f = makeFront(WALL_CAB_D - 0.02, WALL_CAB_H - 0.015, upFinish, state.doorStyle);
+        f.rotation.y = side === 'debut' ? -Math.PI / 2 : Math.PI / 2;
+        f.position.set(side === 'debut' ? -0.009 : 0.009, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2);
+        eg.add(f);
+        const pl2 = centeredPlacement(wk, end, WALL_BOT);
+        eg.position.copy(pl2.pos);
+        eg.rotation.y = pl2.rotY;
+        inner.add(eg);
+        const wep = findSku('wallEndPanel', wch === 42 ? 48 : wch);
+        manifest.addSku(wep, 'Panneau d’extrémité mural (WEP)', { zone: 'upper' });
+      }
       // REQ-906 : moulure couronne sur le dessus du ruban d'armoires murales
       addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
         WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
@@ -1930,6 +1981,17 @@ export function buildKitchen(state) {
         islX0 - 0.02 + s * (islW + 0.04), COUNTER_TOP / 2, islZ0 + (islD + 0.04) / 2));
     }
     manifest.counterArea += (islW + 0.08) * (islD + 0.1);
+    // REQ-912 : profil de chant sur les deux longs bords du comptoir d'îlot
+    if (edgeProf !== 'vif') {
+      const rad = edgeProf === 'bullnose' ? COUNTER_T / 2 - 0.001 : 0.009;
+      const ey = edgeProf === 'bullnose' ? COUNTER_H + COUNTER_T / 2 : COUNTER_TOP - 0.009;
+      for (const ez of [islZ0 - 0.03, islZ0 + islD + 0.07]) {
+        const c = cyl(rad, islW + 0.08, counterMat, islCx, ey, ez, 24);
+        c.rotation.z = Math.PI / 2;
+        ig.add(c);
+        edgeLin += islW + 0.08;
+      }
+    }
     const nSt = islW > 2 ? 3 : 2;
     for (let i = 0; i < nSt; i++) {
       ig.add(D.stool(islCx + (i - (nSt - 1) / 2) * 0.62, islZ0 + islD + 0.28));
@@ -1965,6 +2027,11 @@ export function buildKitchen(state) {
       manifest.appliances.hood = true;
       if (!micro) manifest.add('hotte-coffrage');
     }
+  }
+
+  // REQ-912 : le façonnage bullnose se facture au pied linéaire (l'adouci est inclus)
+  if (edgeProf === 'bullnose' && edgeLin > 0.1) {
+    manifest.add('chant-bullnose', Math.ceil(edgeLin * 3.2808));
   }
 
   // déco près de l'évier (mural seulement)

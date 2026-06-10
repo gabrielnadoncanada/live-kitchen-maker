@@ -185,7 +185,7 @@ travail. Classés par impact sur la crédibilité.
 | REQ-906 | **Moulure couronne** en haut des armoires murales — au catalogue, demande client n°1 ; le haut des murales finit à nu. | Haute | ✅ couronne sur rubans muraux, coin aveugle et colonnes ; facturée en longueurs de 96 po (ligne générique — pas de SKU couronne dans l'extrait catalogue) |
 | REQ-907 | **Valance lumineuse** sous les murales (cache la bande LED — produit moulure). | Basse | ✅ bande en finition des hauts sous chaque ruban mural et le coin aveugle (la LED existante devient « cachée ») ; facturée en moulure de scribe SM1.5 par longueurs de 96 po |
 | REQ-908 | **Évier farmhouse** (FSBC33/36 au catalogue) + choix simple/double cuve + 2-3 styles de robinets. | Moyenne | ✅ section 07 : Encastré/Farmhouse (tablier fireclay proud des portes, comptoir découpé jusqu'au bord, caisson FSBC36 facturé, portes raccourcies), cuve simple/double, robinets col de cygne / pont rétro / professionnel (ressort) ; l'évier d'îlot reste encastré |
-| REQ-909 | **Panneau d'extrémité mural** (WEP) sur les bouts de murales exposés — l'équivalent haut de la fausse porte des bas. | Moyenne | ⬜ |
+| REQ-909 | **Panneau d'extrémité mural** (WEP) sur les bouts de murales exposés — l'équivalent haut de la fausse porte des bas. | Moyenne | ✅ panneau (façade au style courant) sur chaque bout de ruban qui ne bute ni sur un coin (aveugle/perpendiculaire) ni sur une colonne ; SKU WEP1330/1336/1348 assorti à la hauteur des murales |
 | REQ-910 | **Sens des charnières** (porte gauche/droite) — information de commande réelle, sélectionnable au clic sur le module. | Basse | ✅ chips « Charnières » dans l'éditeur de module (portes simples ≤ 21 po) ; persisté dans `gapPlans.hinges` (donc dans le lien de partage et le lead) ; poignée et charnières apparentes du bon côté en 3D |
 
 ### Réalisme des matériaux
@@ -193,7 +193,7 @@ travail. Classés par impact sur la crédibilité.
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
 | REQ-911 | **Bois trop strié en gros plan** (effet tôle ondulée, surtout le noyer) : décaler les UV aléatoirement par porte, réduire le contraste du grain. | Haute | ✅ anneaux irréguliers (ondulation + phase bruitées), contraste et bump réduits, UV décalées porte par porte, UV du panneau d'îlot détendues |
-| REQ-912 | **Profil de chant du comptoir** (eased/bullnose) — les arêtes sont vives. | Basse | ⬜ |
+| REQ-912 | **Profil de chant du comptoir** (eased/bullnose) — les arêtes sont vives. | Basse | ✅ section 06 « Profil de chant » : vif / adouci (défaut, arête supérieure arrondie, inclus) / bullnose (nez pleine épaisseur, facturé au pi lin) — appliqué aux bords avant muraux (interrompu par la cuve farmhouse) et aux deux longs bords de l'îlot |
 
 ### Mise en scène (vendre le rêve)
 

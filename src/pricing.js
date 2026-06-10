@@ -34,7 +34,8 @@ export function computeQuote(state, manifest) {
   for (const [key, count] of Object.entries(manifest.modules)) {
     const def = MODULE_PRICES[key];
     if (!def || def.price === 0) continue;
-    const isCab = !['panneau-lv'].includes(key);
+    // le façonnage de chant (REQ-912) suit le comptoir, pas la finition d'armoires
+    const isCab = !['panneau-lv', 'chant-bullnose'].includes(key);
     const unit = Math.round(def.price * (isCab ? mult : 1));
     const total = unit * count;
     cabTotal += total;

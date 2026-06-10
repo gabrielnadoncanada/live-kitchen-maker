@@ -27,6 +27,7 @@ export const state = {
   islandFinish: 'noyer',
   handle: 'barre-laiton',
   counter: 'quartz-blanc',
+  counterEdge: 'adouci',  // 'vif' | 'adouci' | 'bullnose' — profil de chant (REQ-912)
   backsplash: 'zellige-blanc',
   floor: 'beton-poli',
   wall: 'blanc-casse',

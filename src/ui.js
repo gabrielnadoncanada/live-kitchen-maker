@@ -419,6 +419,12 @@ export function buildPanel() {
   // 6 · SURFACES
   const s5 = section('06', 'Les surfaces');
   s5.append(swatchGroup('Comptoir', COUNTERS, (s) => s.counter, (k) => setState({ counter: k, preset: null }), { priceKey: 'price' }));
+  // REQ-912 : profil de chant (l'adouci est inclus, le bullnose se façonne au pi lin)
+  s5.append(el('<div class="swatch-label"><span>Profil de chant</span></div>'));
+  s5.append(segmented(
+    [['vif', 'Vif'], ['adouci', 'Adouci'], ['bullnose', 'Bullnose']],
+    (s) => s.counterEdge || 'adouci', (k) => setState({ counterEdge: k })
+  ));
   s5.append(swatchGroup('Dosseret', BACKSPLASHES, (s) => s.backsplash, (k) => setState({ backsplash: k, preset: null }), { priceKey: 'price' }));
   s5.append(swatchGroup('Plancher', FLOORS, (s) => s.floor, (k) => setState({ floor: k, preset: null }), { priceKey: 'price', columns: 4 }));
   s5.append(swatchGroup('Murs', WALLS, (s) => s.wall, (k) => setState({ wall: k, preset: null })));

@@ -407,6 +407,20 @@
       "price": 23.7
     }
   },
+  "wallEndPanel": {
+    "30": {
+      "sku": "WEP1330",
+      "price": 15
+    },
+    "36": {
+      "sku": "WEP1336",
+      "price": 18
+    },
+    "48": {
+      "sku": "WEP1348",
+      "price": 24.3
+    }
+  },
   "filler": {
     "3": {
       "sku": "WF330-FW",
