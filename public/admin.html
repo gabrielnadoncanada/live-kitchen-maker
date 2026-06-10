@@ -62,7 +62,7 @@
       $('stBudget').textContent = budgets.length ? fmt(budgets.reduce((a, b) => a + b, 0) / budgets.length) : '—';
       $('stChaud').textContent = rows.filter(l => (l.contact.horizon || '') === 'moins-3-mois').length;
       if (!rows.length) { $('out').innerHTML = '<div class="empty">Aucun lead pour le moment.</div>'; return; }
-      $('out').innerHTML = `<table><tr><th>Date</th><th>Nom</th><th>Contact</th><th>Code postal</th><th>Horizon</th><th>Budget</th><th>Cuisine</th></tr>${
+      $('out').innerHTML = `<table><tr><th>Date</th><th>Nom</th><th>Contact</th><th>Code postal</th><th>Horizon</th><th>Budget</th><th>Cuisine</th><th>Projet 3D</th></tr>${
         rows.map(l => `<tr>
           <td>${new Date(l.date || l.recu).toLocaleDateString('fr-CA')}</td>
           <td>${esc(l.contact.nom)}</td>
@@ -70,16 +70,18 @@
           <td>${esc(l.contact.codePostal || '')}</td>
           <td>${esc(l.contact.horizon || '')}</td>
           <td><b>${l.devis ? fmt(l.devis.total) : '—'}</b></td>
-          <td>${l.config ? `${({ lineaire: 'Linéaire', l: 'En L', u: 'En U' })[l.config.layout] || ''}${l.config.island ? ' + îlot' : ''}` : ''}</td>
+          <td>${l.config ? `${({ lineaire: 'Linéaire', l: 'En L', u: 'En U', galley: 'Couloir' })[l.config.layout] || ''}${l.config.island ? ' + îlot' : ''}` : ''}</td>
+          <td>${l.lien ? `<a href="${esc(l.lien)}" target="_blank" rel="noopener">▶ Rouvrir</a>` : '—'}</td>
         </tr>`).join('')
       }</table>`;
     });
     $('csv').addEventListener('click', () => {
-      const head = 'date;nom;courriel;telephone;code_postal;horizon;budget;agencement\n';
+      const head = 'date;nom;courriel;telephone;code_postal;horizon;budget;agencement;projet_3d\n';
       const body = rows.map(l => [
         l.date || l.recu, l.contact.nom, l.contact.courriel, l.contact.telephone || '',
         l.contact.codePostal || '', l.contact.horizon || '', l.devis ? l.devis.total : '',
         l.config ? l.config.layout + (l.config.island ? '+ilot' : '') : '',
+        l.lien || '',
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob(['﻿' + head + body], { type: 'text/csv;charset=utf-8' }));

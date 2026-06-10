@@ -94,17 +94,25 @@ l'API est injoignable — le visiteur n'est jamais bloqué), puis génère un **
 couleurs du tenant** (jsPDF) : en-tête, lignes détaillées, taxes, total, mensualité, mentions.
 
 ### API leads (Route Handlers Next, TypeScript)
-- `POST /api/lead` — réception, validation, stockage JSON Lines par client dans
-  `data/leads/` (gitignoré). Clés clients : env `LEAD_CLIENTS` (JSON) ou démo locale
-  (`lib/clients.ts`). TODO Phase 2 : notification courriel (Resend).
+- `POST /api/lead` — réception, validation, stockage durable. Clés clients :
+  env `LEAD_CLIENTS` (JSON) ou démo locale (`lib/clients.ts`). Chaque lead inclut
+  `lien`, l'URL de réouverture du projet 3D du visiteur. TODO : notification
+  courriel (Resend).
 - `GET /api/leads?client=&cle=` — lecture protégée par clé secrète (comparaison à temps
   constant).
-- `/admin.html` — boîte à leads : stats (volume, budget moyen, projets chauds), tableau,
-  export CSV.
+- `/admin.html` — boîte à leads : stats (volume, budget moyen, projets chauds), tableau
+  avec lien « ▶ Rouvrir » le projet 3D, export CSV.
 
-⚠ **Vercel** : le stockage fichier est éphémère en serverless — il fonctionne en dev local
-et en auto-hébergement Node. La Phase 2 branche un driver Postgres (Neon) derrière la même
-interface (`lib/leadStore.ts`) ; rien d'autre ne change.
+**Stockage (`lib/leadStore.ts`)** — deux drivers derrière la même interface :
+1. **Postgres (Neon)** dès que `DATABASE_URL` (ou `POSTGRES_URL`) est défini — durable,
+   production. La table `leads` se crée toute seule au premier lead.
+2. **Fichier JSON Lines** (`data/leads/`, gitignoré) sinon — dev local et
+   auto-hébergement Node. ⚠ Sur Vercel sans base, `/tmp` est éphémère : les leads
+   ne survivent pas aux redéploiements.
+
+**Mise en service Neon sur Vercel (2 minutes)** : tableau de bord Vercel → projet →
+*Storage* → *Create Database* → **Neon** (plan gratuit). L'intégration pose
+`DATABASE_URL` automatiquement sur le projet. Redéployer — c'est tout.
 
 ### Intégration sur le site du client
 ```html
