@@ -4,13 +4,16 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 export function createScene(canvasEl) {
+  // Mode allégé (mobile) : pixel ratio plafonné à 1,5 (≈ moitié des pixels d'un
+  // DPR 2), ombres PCF simples en 1024 — les deux plus gros postes GPU
+  const LITE = window.matchMedia('(max-width: 860px)').matches;
   const renderer = new THREE.WebGLRenderer({
     canvas: canvasEl, antialias: true, powerPreference: 'high-performance',
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, LITE ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = LITE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -42,7 +45,7 @@ export function createScene(canvasEl) {
   const sun = new THREE.DirectionalLight('#fff2dc', 3.2);
   sun.position.set(-2.5, 4.6, 4.2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(LITE ? 1024 : 2048, LITE ? 1024 : 2048);
   sun.shadow.camera.near = 0.5;
   sun.shadow.camera.far = 20;
   sun.shadow.camera.left = -6; sun.shadow.camera.right = 6;
@@ -57,8 +60,9 @@ export function createScene(canvasEl) {
   fill.position.set(4, 3.2, 2.5);
   scene.add(fill);
 
-  // Douce lumière d'ambiance venant du plafond
-  const hemi = new THREE.HemisphereLight('#fff6e8', '#423a32', 0.32);
+  // Douce lumière d'ambiance venant du plafond — un peu plus présente en mode
+  // allégé pour compenser l'absence des PointLights (pendants, spots)
+  const hemi = new THREE.HemisphereLight('#fff6e8', '#423a32', LITE ? 0.46 : 0.32);
   scene.add(hemi);
 
   const resize = () => {

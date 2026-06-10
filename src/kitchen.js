@@ -4,6 +4,7 @@
 // sur des segments libres, mur par mur.
 // buildKitchen(state) -> { group, manifest, editables, focus, walls }
 import * as THREE from 'three';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   CABINET_FINISHES, COUNTERS, BACKSPLASHES, FLOORS, WALLS,
   HANDLES, APPLIANCE_FINISHES,
@@ -26,6 +27,9 @@ let WALL_BOT = TALL_H - 0.762;
 let WALL_CAB_H = 0.762;
 let WALL_FAMILY = 'wall'; // famille SKU selon la hauteur (wall | wall36 | wall42)
 let SINK_FARM = false;    // REQ-908 : évier farmhouse (tablier apparent) — muté par buildKitchen
+// Mode allégé (mobile) : les PointLights coûtent un calcul par pixel par lampe —
+// on garde leurs abat-jour et bulbes émissifs, mais pas la lumière réelle
+const PERF_LITE = typeof window !== 'undefined' && window.matchMedia('(max-width: 860px)').matches;
 const HOOD_Y = 1.5;       // bas de la hotte murale (60 cm au-dessus de la plaque) — fixe
 const WIN_Y0 = 1.52, WIN_Y1 = 2.2; // la fenêtre ne dépend pas de la hauteur des murales
 const WALL_CAB_D = 0.305; // 12 po — profondeur murale catalogue (REQ-702)
@@ -809,7 +813,7 @@ function decor(S) {
       g.rotation.y = rotY;
       return g;
     },
-    pendant(x, y, z) {
+    pendant(x, y, z, lit = true) {
       const g = new THREE.Group();
       g.add(cyl(0.004, ROOM_H - y - 0.12, S.shadeBlack, 0, (ROOM_H - y) / 2 + 0.06, 0));
       const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.13, 0.16, 24, 1, true), S.shadeBlack);
@@ -822,9 +826,11 @@ function decor(S) {
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 12), S.glow);
       bulb.position.y = -0.01;
       g.add(bulb);
-      const light = new THREE.PointLight('#ffd9a3', 4.5, 4.5, 2);
-      light.position.y = -0.05;
-      g.add(light);
+      if (lit && !PERF_LITE) {
+        const light = new THREE.PointLight('#ffd9a3', 4.5, 4.5, 2);
+        light.position.y = -0.05;
+        g.add(light);
+      }
       g.position.set(x, y, z);
       return g;
     },
@@ -858,6 +864,42 @@ function catalogWidths(len) {
   const rest = T - S;
   if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
   return out;
+}
+
+// ——— perf : fusion des géométries statiques par matériau ———
+// Des centaines de petites boîtes deviennent ~un mesh par matériau : les draw
+// calls s'effondrent (et la passe d'ombre avec). Les hitbox éditables restent
+// des meshes séparés (raycast), et les conteneurs escamotables (murs, plafond,
+// îlot, calques plan/élévation) se fusionnent chacun pour soi.
+function mergeStatic(container, skip = new Set()) {
+  const buckets = new Map();
+  const doomed = [];
+  container.updateWorldMatrix(true, true);
+  const inv = new THREE.Matrix4().copy(container.matrixWorld).invert();
+  container.traverse((o) => {
+    if (!o.isMesh || o.userData.editable || Array.isArray(o.material)) return;
+    for (let p = o; p && p !== container; p = p.parent) if (skip.has(p)) return;
+    const attrs = Object.keys(o.geometry.attributes).sort().join(',');
+    const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${attrs}`;
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { mat: o.material, cast: o.castShadow, recv: o.receiveShadow, geos: [] }));
+    const g = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    b.geos.push(g);
+    doomed.push(o);
+  });
+  for (const o of doomed) {
+    o.parent.remove(o);
+    o.geometry.dispose();
+  }
+  for (const b of buckets.values()) {
+    const merged = BufferGeometryUtils.mergeGeometries(b.geos, false);
+    for (const g of b.geos) g.dispose();
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, b.mat);
+    m.castShadow = b.cast;
+    m.receiveShadow = b.recv;
+    container.add(m);
+  }
 }
 
 // retranche [c0,c1] d'une liste d'intervalles
@@ -922,17 +964,20 @@ export function buildKitchen(state) {
     ? Math.max(2.6, b)
     : Math.max(3.5, wantIsland ? 4.15 : 3.5, b + 0.7, c + 0.7);
 
-  const finish = CABINET_FINISHES[state.cabinetFinish].make();
-  const islandFinish = CABINET_FINISHES[state.islandFinish || state.cabinetFinish].make();
+  // tolérance aux clés inconnues (vieux lien partagé après un renommage de
+  // catalogue) : on retombe sur la première entrée plutôt que de planter
+  const pick = (table, key) => table[key] || Object.values(table)[0];
+  const finish = pick(CABINET_FINISHES, state.cabinetFinish).make();
+  const islandFinish = pick(CABINET_FINISHES, state.islandFinish || state.cabinetFinish).make();
   // REQ-1002 : two-tone — les armoires murales peuvent porter leur propre finition
-  const upFinish = CABINET_FINISHES[state.upperFinish || state.cabinetFinish].make();
-  const counterMat = COUNTERS[state.counter].make();
-  const bs = BACKSPLASHES[state.backsplash];
+  const upFinish = pick(CABINET_FINISHES, state.upperFinish || state.cabinetFinish).make();
+  const counterMat = pick(COUNTERS, state.counter).make();
+  const bs = pick(BACKSPLASHES, state.backsplash);
   const backsplashMat = bs.make ? bs.make() : counterMat;
-  const floorMat = FLOORS[state.floor].make();
-  const wallMat = WALLS[state.wall].make();
-  const handleMat = HANDLES[state.handle].make();
-  const applianceMat = APPLIANCE_FINISHES[state.applianceFinish].make();
+  const floorMat = pick(FLOORS, state.floor).make();
+  const wallMat = pick(WALLS, state.wall).make();
+  const handleMat = pick(HANDLES, state.handle).make();
+  const applianceMat = pick(APPLIANCE_FINISHES, state.applianceFinish).make();
   const mats = { finish, handleKind: state.handle, handleMat, doorStyle: state.doorStyle, applianceMat, zone: 'base' };
   const islandMats = { ...mats, finish: islandFinish, zone: 'island' };
   const matsUpper = { ...mats, finish: upFinish, zone: 'upper' };
@@ -1058,7 +1103,7 @@ export function buildKitchen(state) {
         const lens = cyl(0.045, 0.008, S.glow, r.x, ROOM_H - 0.013, r.z);
         lens.castShadow = false;
         cg.add(ring, lens);
-        if (i === Math.floor(n / 2)) {
+        if (i === Math.floor(n / 2) && !PERF_LITE) {
           const pl = new THREE.PointLight('#ffe3bd', 1.6, 4.2, 2);
           pl.position.set(r.x, ROOM_H - 0.18, r.z);
           cg.add(pl);
@@ -2015,7 +2060,8 @@ export function buildKitchen(state) {
     }
     const nP = islW > 2 ? 3 : 2;
     for (let i = 0; i < nP; i++) {
-      ig.add(D.pendant(islCx + (i - (nP - 1) / 2) * (islW / nP), 1.78, islZ0 + islD / 2));
+      // une seule vraie lampe (la centrale) : les autres restent émissives
+      ig.add(D.pendant(islCx + (i - (nP - 1) / 2) * (islW / nP), 1.78, islZ0 + islD / 2, i === Math.floor(nP / 2)));
     }
     if (islFeature === 'aucun') {
       ig.add(D.bowl(islCx - 0.4, COUNTER_TOP, islZ0 + islD / 2));
@@ -2418,6 +2464,15 @@ export function buildKitchen(state) {
     wallLens: wallLen,
     cabWalls,
   };
+
+  // ——— perf : fusion finale (chaque conteneur escamotable pour soi) ———
+  {
+    const skip = new Set([planLayer, ...Object.values(elevGroups), ...walls.map((w) => w.group)]);
+    if (islandGroup) skip.add(islandGroup);
+    mergeStatic(inner, skip);
+    for (const w of walls) mergeStatic(w.group);
+    if (islandGroup) mergeStatic(islandGroup);
+  }
 
   return { group: root, inner, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps, matMap, islandRect };
 }
