@@ -357,6 +357,7 @@ export function buildPanel() {
       const ap = p.apply;
       setState({
         preset: key, cabinetFinish: ap.cabinetFinish, islandFinish: ap.islandFinish,
+        upperFinish: ap.upperFinish ?? null,
         doorStyle: ap.doorStyle, handle: ap.handle, counter: ap.counter,
         backsplash: ap.backsplash, floor: ap.floor, wall: ap.wall,
       });
@@ -370,7 +371,11 @@ export function buildPanel() {
   // 5 · ARMOIRES
   const s4 = section('05', 'Les armoires');
   s4.append(segmented([['plate', 'Façade plane'], ['shaker', 'Façade shaker']], (s) => s.doorStyle, (k) => setState({ doorStyle: k, preset: null })));
-  s4.append(swatchGroup('Finition des armoires', CABINET_FINISHES, (s) => s.cabinetFinish, (k) => setState({ cabinetFinish: k, preset: null })));
+  s4.append(swatchGroup('Finition des bas', CABINET_FINISHES, (s) => s.cabinetFinish, (k) => setState({ cabinetFinish: k, preset: null })));
+  // REQ-1002 : two-tone — finition des armoires murales indépendante des bas
+  s4.append(swatchGroup('Finition des hauts', CABINET_FINISHES,
+    (s) => s.upperFinish || s.cabinetFinish,
+    (k) => setState({ upperFinish: k === state.cabinetFinish ? null : k, preset: null })));
   const islSw = swatchGroup('Finition de l’îlot', CABINET_FINISHES, (s) => s.islandFinish || s.cabinetFinish, (k) => setState({ islandFinish: k, preset: null }));
   s4.append(islSw);
   updaters.push((s) => { islSw.style.display = s.island ? '' : 'none'; });
@@ -457,26 +462,143 @@ export function renderQuote(q) {
   countAnim = requestAnimationFrame(step);
 }
 
-// ————————————— popover module —————————————
+// ————————————— éditeur de module (REQ-1001) —————————————
+// Types catalogue avec leurs largeurs compatibles ; un type incompatible avec la
+// largeur actuelle recompose d'abord le segment (snap = largeur cible).
 const MODULE_TYPES = [
-  ['portes', 'Portes', '▢▢'],
-  ['tiroirs', 'Tiroirs', '☰'],
-  ['ouvert', 'Niche ouverte', '▤'],
+  { key: 'portes', label: 'Portes', ico: '▢▢', ok: (w) => w >= 9, snap: (w) => Math.max(9, Math.min(36, w)) },
+  { key: 'tiroirs', label: 'Tiroirs', ico: '☰', ok: (w) => w >= 12, snap: (w) => Math.max(12, Math.min(36, w)) },
+  { key: 'ouvert', label: 'Niche ouverte', ico: '▤', ok: (w) => w >= 9, snap: (w) => Math.max(9, Math.min(36, w)) },
+  { key: 'range-epices', label: 'Range-épices', ico: '⫶', ok: (w) => w >= 6 && w <= 12, snap: () => 9 },
+  { key: 'poubelle', label: 'Tiroir à déchets', ico: '♻', ok: (w) => w === 18, snap: () => 18 },
+  { key: 'micro-ondes', label: 'Micro-ondes', ico: '▦', ok: (w) => w === 27, snap: () => 27 },
 ];
+const typeDef = (k) => MODULE_TYPES.find((t) => t.key === k) || MODULE_TYPES[0];
+const widthsFor = (t) =>
+  t === 'range-epices' ? [6, 9, 12]
+  : t === 'poubelle' ? [18]
+  : t === 'micro-ondes' ? [27]
+  : t === 'tiroirs' ? [12, 15, 18, 21, 24, 27, 30, 33, 36]
+  : [9, 12, 15, 18, 21, 24, 27, 30, 33, 36];
 
-export function showPopover(x, y, moduleId, current, width) {
+function writePlan(gapKey, widths, types) {
+  setState({ gapPlans: { [gapKey]: widths ? { widths, types } : null } });
+}
+
+// Change la largeur du caisson idx à newW (po) ; les voisins absorbent la différence
+// par pas de 3 po (min 9, max 36). exact = la somme doit remplir l'espace (îlot).
+// Retourne { widths, types } ou null si impossible.
+function recomposeWidth(comp, idx, newW, exact) {
+  const widths = [...comp.widths];
+  const types = [...comp.types];
+  widths[idx] = newW;
+  let rest = comp.totalIn - widths.reduce((a, b) => a + b, 0);
+  const order = []; // voisins du plus proche au plus lointain
+  for (let d = 1; d < widths.length; d++) {
+    if (idx + d < widths.length) order.push(idx + d);
+    if (idx - d >= 0) order.push(idx - d);
+  }
+  // trop large : rétrécir les voisins
+  for (const j of order) {
+    while (rest < -0.01 && widths[j] >= 12) { widths[j] -= 3; rest += 3; }
+  }
+  if (rest < -0.01) return null;
+  // espace libéré : le redonner aux voisins pour garder un filler < 3 po
+  for (const j of order) {
+    while (rest >= 3 && widths[j] <= 33) { widths[j] += 3; rest -= 3; }
+  }
+  // personne ne peut absorber et il reste ≥ 9 po : nouveau caisson en bout
+  while (rest >= 9) {
+    const w2 = Math.min(36, Math.floor(rest / 3) * 3);
+    widths.push(w2);
+    types.push(w2 >= 12 ? 'tiroirs' : 'portes');
+    rest -= w2;
+  }
+  if (exact && rest > 0.01) return null;
+  return { widths, types };
+}
+
+export function showModuleEditor(x, y, data, comp) {
   const pop = document.getElementById('popover');
   const opts = document.getElementById('popoverOpts');
-  document.getElementById('popoverTitle').textContent = `Caisson · ${Math.round(width * 100)} cm`;
+  const { gapKey, gapIndex, widthIn, current } = data;
+  const exact = !!comp.exact;
+  document.getElementById('popoverTitle').textContent =
+    `Module · ${Math.round(widthIn * 10) / 10} po (${Math.round(widthIn * 2.54)} cm)`;
   opts.innerHTML = '';
-  for (const [key, label, ico] of MODULE_TYPES) {
-    const b = el(`<button class="${key === current ? 'active' : ''}"><span class="ico">${ico}</span>${label}</button>`);
+
+  const flash = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
+  const apply = (widths, types) => { writePlan(gapKey, widths, types); hidePopover(); };
+
+  for (const t of MODULE_TYPES) {
+    const b = el(`<button class="${t.key === current ? 'active' : ''}">
+      <span class="ico">${t.ico}</span>${t.label}${t.ok(widthIn) ? '' : `<small>→ ${t.snap(widthIn)} po</small>`}
+    </button>`);
     b.addEventListener('click', () => {
-      setState({ moduleOverrides: { [moduleId]: key } });
-      hidePopover();
+      const r = t.ok(widthIn)
+        ? { widths: [...comp.widths], types: [...comp.types] }
+        : recomposeWidth(comp, gapIndex, t.snap(widthIn), exact);
+      if (!r) return flash(b);
+      r.types[gapIndex] = t.key;
+      apply(r.widths, r.types);
     });
     opts.append(b);
   }
+
+  // — largeur : les voisins se recomposent autour du nouveau format
+  const widList = widthsFor(current);
+  if (widList.length > 1) {
+    opts.append(el('<div class="pop-label">Largeur</div>'));
+    const chips = el('<div class="pop-chips"></div>');
+    for (const w of widList) {
+      const c = el(`<button class="chip ${w === widthIn ? 'active' : ''}">${w} po</button>`);
+      c.addEventListener('click', () => {
+        if (w === widthIn) return;
+        const r = recomposeWidth(comp, gapIndex, w, exact);
+        if (!r) return flash(c);
+        if (!typeDef(current).ok(w)) r.types[gapIndex] = w >= 12 ? 'tiroirs' : 'portes';
+        apply(r.widths, r.types);
+      });
+      chips.append(c);
+    }
+    opts.append(chips);
+  }
+
+  // — composition du segment : diviser, fusionner, revenir à l'automatique
+  const actions = el('<div class="pop-actions"></div>');
+  if (widthIn >= 18) {
+    const b = el('<button>⊟ Diviser</button>');
+    b.addEventListener('click', () => {
+      const widths = [...comp.widths], types = [...comp.types];
+      const w1 = Math.floor(widthIn / 6) * 3, w2 = widthIn - w1;
+      const tOk = (w) => (typeDef(current).ok(w) ? current : w >= 12 ? 'tiroirs' : 'portes');
+      widths.splice(gapIndex, 1, w1, w2);
+      types.splice(gapIndex, 1, tOk(w1), tOk(w2));
+      apply(widths, types);
+    });
+    actions.append(b);
+  }
+  const ni = gapIndex + 1 < comp.widths.length ? gapIndex + 1 : gapIndex - 1;
+  if (ni >= 0 && ni < comp.widths.length && widthIn + comp.widths[ni] <= 36) {
+    const b = el('<button>⊞ Fusionner</button>');
+    b.addEventListener('click', () => {
+      const widths = [...comp.widths], types = [...comp.types];
+      const merged = widths[gapIndex] + widths[ni];
+      const lo = Math.min(gapIndex, ni);
+      const mt = typeDef(current).ok(merged) ? current : merged >= 12 ? 'tiroirs' : 'portes';
+      widths.splice(lo, 2, merged);
+      types.splice(lo, 2, mt);
+      apply(widths, types);
+    });
+    actions.append(b);
+  }
+  if (state.gapPlans && state.gapPlans[gapKey]) {
+    const b = el('<button>↺ Auto</button>');
+    b.addEventListener('click', () => apply(null, null));
+    actions.append(b);
+  }
+  if (actions.children.length) opts.append(actions);
+
   pop.hidden = false;
   const r = pop.getBoundingClientRect();
   pop.style.left = `${Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8)}px`;

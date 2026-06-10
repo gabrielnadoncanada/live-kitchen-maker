@@ -122,7 +122,7 @@ function makeHandle(kind, mat, vertical = false, len = 0.17) {
 
 // ——— caisson bas ———
 function buildBase(w, type, mats, manifest, widthIn = null) {
-  const { finish, handleKind, handleMat, doorStyle, applianceMat } = mats;
+  const { finish, handleKind, handleMat, doorStyle, applianceMat, zone = 'base' } = mats;
   const g = new THREE.Group();
   const S = fixedMats();
 
@@ -163,7 +163,52 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
 
   if (type === 'filler') {
     g.add(box(w - 0.002, frontH, DOOR_T, finish, w / 2, frontY0 + frontH / 2, zF));
-    manifest.addSku(fillerSku(widthIn ?? w / IN), 'Filler de finition (bas)');
+    manifest.addSku(fillerSku(widthIn ?? w / IN), 'Filler de finition (bas)', { zone });
+    return g;
+  }
+
+  // REQ-1001 : range-épices coulissant (6–12 po) — façade étroite, poignée verticale
+  if (type === 'range-epices') {
+    const f = makeFront(w - GAP * 2, frontH - GAP, finish, doorStyle);
+    f.position.set(w / 2, frontY0 + frontH / 2, zF);
+    g.add(f);
+    const h = makeHandle(handleKind, handleMat, true, 0.2);
+    if (h) { h.position.set(w / 2, frontY0 + frontH - 0.16, zF + DOOR_T / 2); g.add(h); }
+    manifest.handles++;
+    const s = findSku('spiceRack', widthIn ?? Math.round(w / IN));
+    if (!manifest.addSku(s, `Range-épices coulissant ${s?.widthIn} po`, { zone })) manifest.add('base-portes');
+    return g;
+  }
+
+  // REQ-1001 : tiroir à déchets coulissant (18 po) — façade pleine, poignée haute
+  if (type === 'poubelle') {
+    const f = makeFront(w - GAP * 2, frontH - GAP, finish, doorStyle);
+    f.position.set(w / 2, frontY0 + frontH / 2, zF);
+    g.add(f);
+    const h = makeHandle(handleKind, handleMat, false, Math.min(0.3, w * 0.5));
+    if (h) { h.position.set(w / 2, frontY0 + frontH - 0.09, zF + DOOR_T / 2); g.add(h); }
+    manifest.handles++;
+    const s = findSku('garbagePullOut', widthIn ?? 18);
+    if (!manifest.addSku(s, `Tiroir à déchets coulissant ${s?.widthIn} po`, { zone })) manifest.add('base-portes');
+    return g;
+  }
+
+  // REQ-1001 : caisson micro-ondes (27 po) — niche encastrée + tiroir en bas
+  // (l'appareil lui-même n'est pas vendu : planification seulement)
+  if (type === 'micro-ondes') {
+    const nicheH = frontH * 0.45;
+    const drawerH = frontH - nicheH - GAP;
+    const f = makeFront(w - GAP * 2, drawerH, finish, doorStyle);
+    f.position.set(w / 2, frontY0 + drawerH / 2, zF);
+    g.add(f);
+    const h = makeHandle(handleKind, handleMat, false, Math.min(0.3, w * 0.45));
+    if (h) { h.position.set(w / 2, frontY0 + drawerH * 0.82, zF + DOOR_T / 2); g.add(h); }
+    manifest.handles++;
+    const myY = frontY0 + drawerH + GAP + nicheH / 2;
+    g.add(box(w - 0.03, nicheH, 0.02, applianceMat, w / 2, myY, zF - 0.002));
+    g.add(box(w - 0.12, nicheH - 0.08, 0.015, S.blackGlass, w / 2, myY, zF + 0.008));
+    const s = findSku('baseMicrowave', widthIn ?? 27);
+    if (!manifest.addSku(s, `Caisson micro-ondes ${s?.widthIn} po`, { zone })) manifest.add('base-portes');
     return g;
   }
 
@@ -181,7 +226,7 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
       manifest.handles++;
     });
     const s = widthIn != null ? findSku('baseDrawer', widthIn) : null;
-    if (!manifest.addSku(s, `Caisson à tiroirs ${s?.widthIn} po`)) manifest.add('base-tiroirs');
+    if (!manifest.addSku(s, `Caisson à tiroirs ${s?.widthIn} po`, { zone })) manifest.add('base-tiroirs');
     return g;
   }
 
@@ -204,7 +249,7 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     manifest.add('base-evier');
   } else {
     const s = widthIn != null ? findSku('baseStandard', widthIn) : null;
-    if (!manifest.addSku(s, `Caisson bas ${s?.widthIn} po`)) manifest.add('base-portes');
+    if (!manifest.addSku(s, `Caisson bas ${s?.widthIn} po`, { zone })) manifest.add('base-portes');
   }
   return g;
 }
@@ -290,7 +335,7 @@ function buildPantry(mats, manifest) {
 
 // ——— armoire murale ———
 function buildWallCab(w, mats, manifest, widthIn = null) {
-  const { finish, handleKind, handleMat, doorStyle } = mats;
+  const { finish, handleKind, handleMat, doorStyle, zone = 'base' } = mats;
   const g = new THREE.Group();
   g.add(box(w - 0.004, WALL_CAB_H, WALL_CAB_D - DOOR_T, finish, w / 2, WALL_CAB_H / 2, (WALL_CAB_D - DOOR_T) / 2));
   const zF = WALL_CAB_D - DOOR_T / 2;
@@ -314,7 +359,7 @@ function buildWallCab(w, mats, manifest, widthIn = null) {
   strip.castShadow = false;
   g.add(strip);
   const s = widthIn != null ? findSku('wall', widthIn) : null;
-  if (!manifest.addSku(s, `Armoire murale ${s?.widthIn} po`)) manifest.add('mur');
+  if (!manifest.addSku(s, `Armoire murale ${s?.widthIn} po`, { zone })) manifest.add('mur');
   return g;
 }
 
@@ -538,9 +583,11 @@ class Manifest {
   }
   add(key, n = 1) { this.modules[key] = (this.modules[key] || 0) + n; }
   // retourne true si l'entrée catalogue existe (sinon l'appelant retombe sur add())
-  addSku(entry, label, { finishMult = true } = {}) {
+  // REQ-1002 : zone = 'base' | 'upper' | 'island' — chaque zone a son multiplicateur de finition
+  addSku(entry, label, { finishMult = true, zone = 'base' } = {}) {
     if (!entry || !entry.sku) return false;
-    const it = (this.skuItems[entry.sku] ||= { sku: entry.sku, label, unit: entry.price, qty: 0, finishMult });
+    const key = `${zone}|${entry.sku}`;
+    const it = (this.skuItems[key] ||= { sku: entry.sku, label, unit: entry.price, qty: 0, finishMult, zone });
     it.qty++;
     return true;
   }
@@ -562,6 +609,8 @@ export function buildKitchen(state) {
 
   const finish = CABINET_FINISHES[state.cabinetFinish].make();
   const islandFinish = CABINET_FINISHES[state.islandFinish || state.cabinetFinish].make();
+  // REQ-1002 : two-tone — les armoires murales peuvent porter leur propre finition
+  const upFinish = CABINET_FINISHES[state.upperFinish || state.cabinetFinish].make();
   const counterMat = COUNTERS[state.counter].make();
   const bs = BACKSPLASHES[state.backsplash];
   const backsplashMat = bs.make ? bs.make() : counterMat;
@@ -569,8 +618,9 @@ export function buildKitchen(state) {
   const wallMat = WALLS[state.wall].make();
   const handleMat = HANDLES[state.handle].make();
   const applianceMat = APPLIANCE_FINISHES[state.applianceFinish].make();
-  const mats = { finish, handleKind: state.handle, handleMat, doorStyle: state.doorStyle, applianceMat };
-  const islandMats = { ...mats, finish: islandFinish };
+  const mats = { finish, handleKind: state.handle, handleMat, doorStyle: state.doorStyle, applianceMat, zone: 'base' };
+  const islandMats = { ...mats, finish: islandFinish, zone: 'island' };
+  const matsUpper = { ...mats, finish: upFinish, zone: 'upper' };
 
   // ——— murs porteurs de caissons selon la forme ———
   const cabWalls = state.layout === 'u' ? ['back', 'left', 'right'] : state.layout === 'l' ? ['back', 'left'] : ['back'];
@@ -812,6 +862,25 @@ export function buildKitchen(state) {
   const editables = [];
   const placed = { evier: null, cuisiniere: null, frigo: null };
   const moduleCounters = {};
+  // REQ-1001 : composition effective de chaque espace libre, exposée à l'éditeur de module.
+  // gapKey -> { totalIn, widths: [po…], types: [type…] } (caissons seulement, filler exclu)
+  const gapComps = {};
+  // Un espace libre se compose depuis le plan persisté (state.gapPlans[gapKey]) s'il
+  // couvre encore l'espace (reste < 9 po), sinon automatiquement aux largeurs catalogue.
+  function composeGap(gapKey, len) {
+    const totalIn = len / IN;
+    const plan = (state.gapPlans || {})[gapKey];
+    if (plan && Array.isArray(plan.widths) && plan.widths.length) {
+      const sum = plan.widths.reduce((s, w) => s + w, 0);
+      const rest = totalIn - sum;
+      if (rest > -0.05 && rest < 9) {
+        const out = plan.widths.map((wi, i) => ({ w: wi * IN, widthIn: wi, filler: false, planType: plan.types?.[i] || null }));
+        if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
+        return out;
+      }
+    }
+    return catalogWidths(len);
+  }
   const placedIntervals = { back: [], left: [], right: [] }; // REQ-803 : filet AABB
   let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
 
@@ -935,15 +1004,25 @@ export function buildKitchen(state) {
       let cursor = s0;
       let fillIdx = 0;
       const pushFill = (from, to) => {
+        if (to - from < 0.012) return;
         // REQ-701 : caissons aux largeurs catalogue (pas de 3 po) + filler pour le reste
-        for (const piece of catalogWidths(to - from)) {
+        // REQ-1001 : clé stable par position de départ → composition personnalisable
+        const gapKey = `${wallKey}:g${Math.round(from / IN)}`;
+        const comp = { totalIn: (to - from) / IN, widths: [], types: [] };
+        let gi = 0;
+        for (const piece of composeGap(gapKey, to - from)) {
           if (piece.filler) {
-            slots.push({ w: piece.w, type: 'filler', widthIn: piece.widthIn });
+            slots.push({ w: piece.w, type: 'filler', widthIn: piece.widthIn, gapKey });
           } else {
-            slots.push({ w: piece.w, type: 'auto-' + (fillIdx % 2 ? 'portes' : 'tiroirs'), widthIn: piece.widthIn });
+            const t = piece.planType || (fillIdx % 2 ? 'portes' : 'tiroirs');
+            slots.push({ w: piece.w, type: 'auto-' + t, widthIn: piece.widthIn, gapKey, gapIndex: gi, planned: !!piece.planType });
+            comp.widths.push(piece.widthIn);
+            comp.types.push(t);
             fillIdx++;
+            gi++;
           }
         }
+        if (comp.widths.length) gapComps[gapKey] = comp;
       };
       segItems.forEach((it, i) => {
         pushFill(cursor, xs[i]);
@@ -976,8 +1055,10 @@ export function buildKitchen(state) {
         const id = `${wallKey}:${n}`;
         let type = slot.type;
         if (type.startsWith('auto-')) {
-          type = state.moduleOverrides[id] || type.slice(5);
-          if (slot.w < 0.32) type = 'filler';
+          type = type.slice(5);
+          // un slot trop étroit non choisi par l'utilisateur dégénère en filler ;
+          // un slot planifié (range-épices 6 po…) garde son type
+          if (!slot.planned && slot.w < 0.32) type = 'filler';
         }
         const pl = modulePlacement(wallKey, along, slot.w);
         let g;
@@ -993,14 +1074,15 @@ export function buildKitchen(state) {
           if (rrp) manifest.addSku(rrp, 'Panneau de retour réfrigérateur'); // ×2 (un par côté)
           else manifest.add('panneau-frigo');
           // REQ-110 : armoire dédiée au-dessus du frigo, entre les panneaux
+          // (zone « hauts » : finition et multiplicateur des armoires murales)
           {
             const niche = FRIDGE_W - 0.05;
             const ofY0 = 1.86, ofH = TALL_H - ofY0, ofD = 0.6;
-            g.add(box(niche - 0.004, ofH, ofD - DOOR_T, finish, FRIDGE_W / 2, ofY0 + ofH / 2, (ofD - DOOR_T) / 2));
+            g.add(box(niche - 0.004, ofH, ofD - DOOR_T, upFinish, FRIDGE_W / 2, ofY0 + ofH / 2, (ofD - DOOR_T) / 2));
             const dw2 = (niche - GAP * 3) / 2;
             const zF2 = ofD - DOOR_T / 2;
             [GAP + dw2 / 2, GAP * 2 + dw2 * 1.5].forEach((x, i) => {
-              const f = makeFront(dw2, ofH - GAP * 2, finish, mats.doorStyle);
+              const f = makeFront(dw2, ofH - GAP * 2, upFinish, mats.doorStyle);
               f.position.set(0.025 + x, ofY0 + ofH / 2, zF2);
               g.add(f);
               const h = makeHandle(mats.handleKind, mats.handleMat, false, 0.14);
@@ -1008,7 +1090,7 @@ export function buildKitchen(state) {
               manifest.handles++;
             });
             const of = findSku('overFridge', Math.round(niche / IN));
-            if (!manifest.addSku(of, 'Armoire au-dessus du réfrigérateur')) manifest.add('mur');
+            if (!manifest.addSku(of, 'Armoire au-dessus du réfrigérateur', { zone: 'upper' })) manifest.add('mur');
           }
           manifest.appliances.fridge = true;
           placed.frigo = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
@@ -1047,13 +1129,16 @@ export function buildKitchen(state) {
         g.position.copy(pl.pos);
         g.rotation.y = pl.rotY;
         inner.add(g);
-        if (slot.type.startsWith('auto-') && slot.w >= 0.32) {
+        if (slot.type.startsWith('auto-') && (slot.planned || slot.w >= 0.32)) {
           const hit = new THREE.Mesh(
             new THREE.BoxGeometry(slot.w, CARCASS_H + PLINTH, BASE_D),
             new THREE.MeshBasicMaterial({ visible: false })
           );
           hit.position.set(slot.w / 2, (CARCASS_H + PLINTH) / 2, BASE_D / 2);
-          hit.userData = { editable: true, moduleId: id, current: type, width: slot.w };
+          hit.userData = {
+            editable: true, moduleId: id, current: type, width: slot.w,
+            widthIn: slot.widthIn, gapKey: slot.gapKey, gapIndex: slot.gapIndex,
+          };
           g.add(hit);
           editables.push(hit);
         }
@@ -1159,14 +1244,14 @@ export function buildKitchen(state) {
     );
     if (clash) return false;
     const g = new THREE.Group();
-    g.add(box(WBC_W - 0.004, WALL_CAB_H, WALL_CAB_D - DOOR_T, finish, WBC_W / 2, WALL_CAB_H / 2, (WALL_CAB_D - DOOR_T) / 2));
+    g.add(box(WBC_W - 0.004, WALL_CAB_H, WALL_CAB_D - DOOR_T, upFinish, WBC_W / 2, WALL_CAB_H / 2, (WALL_CAB_D - DOOR_T) / 2));
     const zF = WALL_CAB_D - DOOR_T / 2;
     // la moitié côté coin est aveugle (panneau plein), l'autre porte une porte
     const doorW = WBC_W / 2 - GAP * 2;
     const blindX = mirror ? WBC_W * 0.75 : WBC_W * 0.25;
     const doorX = mirror ? WBC_W * 0.25 : WBC_W * 0.75;
-    g.add(box(WBC_W / 2, WALL_CAB_H - GAP * 2, DOOR_T * 0.7, finish, blindX, WALL_CAB_H / 2, zF - 0.003));
-    const f = makeFront(doorW, WALL_CAB_H - GAP * 2, finish, state.doorStyle);
+    g.add(box(WBC_W / 2, WALL_CAB_H - GAP * 2, DOOR_T * 0.7, upFinish, blindX, WALL_CAB_H / 2, zF - 0.003));
+    const f = makeFront(doorW, WALL_CAB_H - GAP * 2, upFinish, state.doorStyle);
     f.position.set(doorX, WALL_CAB_H / 2, zF);
     g.add(f);
     const h = makeHandle(state.handle, handleMat, true, 0.14);
@@ -1181,7 +1266,7 @@ export function buildKitchen(state) {
     g.position.set(x0, WALL_BOT, 0);
     inner.add(g);
     const s = findSku('wallBlindCorner', 30);
-    if (!manifest.addSku(s, 'Coin aveugle mural 30 po')) manifest.add('mur');
+    if (!manifest.addSku(s, 'Coin aveugle mural 30 po', { zone: 'upper' })) manifest.add('mur');
     return true;
   }
   const wbcL = hasCornerL ? blindCornerUpper(false) : false;
@@ -1217,14 +1302,14 @@ export function buildKitchen(state) {
         if (piece.filler) {
           // caisson plein du mur jusqu'au plan des façades — jamais une lamelle flottante
           const fg = new THREE.Group();
-          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, WALL_CAB_D - 0.02, finish,
+          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, WALL_CAB_D - 0.02, upFinish,
             piece.w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
           fg.position.copy(pl.pos);
           fg.rotation.y = pl.rotY;
           inner.add(fg);
-          manifest.addSku(fillerSku(piece.widthIn), 'Filler de finition (mural)');
+          manifest.addSku(fillerSku(piece.widthIn), 'Filler de finition (mural)', { zone: 'upper' });
         } else {
-          const wc = buildWallCab(piece.w, mats, manifest, piece.widthIn);
+          const wc = buildWallCab(piece.w, matsUpper, manifest, piece.widthIn);
           wc.position.copy(pl.pos);
           wc.rotation.y = pl.rotY;
           inner.add(wc);
@@ -1268,13 +1353,21 @@ export function buildKitchen(state) {
     islandCenter = new THREE.Vector3(islX0 + islW / 2, 0.95, islZ0 + islD / 2);
     const islCx = islX0 + islW / 2; // l'îlot est centré dans son espace libre, pas dans la pièce
     const ig = new THREE.Group();
-    const islSlots = catalogWidths(islW)
+    // REQ-1001 : la composition de l'îlot passe aussi par l'éditeur (clé 'isl').
+    // Contrainte : la somme doit remplir islW exactement (panneaux de bout fixes) —
+    // un plan périmé qui ne couvre plus islW retombe en automatique.
+    let islPieces = composeGap('isl', islW);
+    if (Math.abs(islPieces.filter((p) => !p.filler).reduce((s2, p) => s2 + p.widthIn, 0) - islW / IN) > 0.6) {
+      islPieces = catalogWidths(islW);
+    }
+    const islSlots = islPieces
       .filter((p) => !p.filler)
-      .map((p, i) => ({ w: p.w, widthIn: p.widthIn, type: i % 2 ? 'auto-portes' : 'auto-tiroirs' }));
+      .map((p, i) => ({ w: p.w, widthIn: p.widthIn, type: p.planType || (i % 2 ? 'portes' : 'tiroirs'), gapIndex: i }));
+    gapComps['isl'] = { totalIn: islW / IN, widths: islSlots.map((s2) => s2.widthIn), types: islSlots.map((s2) => s2.type), exact: true };
     let cx = islX0 + islW;
     islSlots.forEach((slot, i) => {
       const id = `isl:${i}`;
-      let type = state.moduleOverrides[id] || slot.type.slice(5);
+      const type = slot.type;
       const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
@@ -1284,7 +1377,10 @@ export function buildKitchen(state) {
         new THREE.MeshBasicMaterial({ visible: false })
       );
       hit.position.set(slot.w / 2, (CARCASS_H + PLINTH) / 2, BASE_D / 2);
-      hit.userData = { editable: true, moduleId: id, current: type, width: slot.w };
+      hit.userData = {
+        editable: true, moduleId: id, current: type, width: slot.w,
+        widthIn: slot.widthIn, gapKey: 'isl', gapIndex: i,
+      };
       g.add(hit);
       editables.push(hit);
       manifest.islandModules++;
@@ -1293,10 +1389,10 @@ export function buildKitchen(state) {
     });
     islandRect = { x0: islX0 - 0.04, x1: islX0 + islW + 0.04, z0: islZ0 - 0.03, z1: islZ0 + islD + 0.07 };
     // REQ-709 : les panneaux d'îlot sont des produits facturés (arrière + habillage ×2)
-    manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot');
+    manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot', { zone: 'island' });
     const skin = findSku('islandSkinPanel');
-    manifest.addSku(skin, 'Panneau d’habillage d’îlot');
-    manifest.addSku(skin, 'Panneau d’habillage d’îlot');
+    manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
+    manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
     ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
@@ -1624,7 +1720,7 @@ export function buildKitchen(state) {
     cabWalls,
   };
 
-  return { group: root, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo };
+  return { group: root, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps };
 }
 
 export function disposeKitchen(group) {

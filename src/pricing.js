@@ -12,14 +12,21 @@ export function computeQuote(state, manifest) {
   const biz = getBusiness();
   const groups = [];
   const finish = CABINET_FINISHES[state.cabinetFinish];
-  const mult = finish.mult * DOOR_STYLE_MULT[state.doorStyle];
+  // REQ-1002 : chaque zone (bas / hauts / îlot) applique le multiplicateur de SA finition
+  const multFor = (fk) => (CABINET_FINISHES[fk || state.cabinetFinish] || finish).mult * DOOR_STYLE_MULT[state.doorStyle];
+  const zoneMult = {
+    base: multFor(state.cabinetFinish),
+    upper: multFor(state.upperFinish),
+    island: multFor(state.islandFinish),
+  };
+  const mult = zoneMult.base;
 
   // ——— Armoires ———
   const cabLines = [];
   let cabTotal = 0;
   // REQ-705 : lignes par SKU réel du catalogue (le devis devient un bon de commande)
   for (const it of Object.values(manifest.skuItems || {})) {
-    const unit = Math.round(it.unit * (it.finishMult ? mult : 1));
+    const unit = Math.round(it.unit * (it.finishMult ? (zoneMult[it.zone] || mult) : 1));
     const total = unit * it.qty;
     cabTotal += total;
     cabLines.push({ name: it.label, detail: `${it.qty} × ${fmt(unit)} · ${it.sku}`, value: total });
@@ -33,8 +40,12 @@ export function computeQuote(state, manifest) {
     cabTotal += total;
     cabLines.push({ name: def.label, qty: count, detail: `${count} × ${fmt(unit)}`, value: total });
   }
+  const upperDef = state.upperFinish && state.upperFinish !== state.cabinetFinish
+    ? CABINET_FINISHES[state.upperFinish] : null;
   cabLines.push({
-    name: `Finition ${finish.label.toLowerCase()}`,
+    name: upperDef
+      ? `Finition bas ${finish.label.toLowerCase()} · hauts ${upperDef.label.toLowerCase()}`
+      : `Finition ${finish.label.toLowerCase()}`,
     detail: state.doorStyle === 'shaker' ? 'façade shaker' : 'façade plane',
     value: null,
   });

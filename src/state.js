@@ -18,6 +18,7 @@ export const state = {
   preset: 'noyer-chic',
   doorStyle: 'plate',     // 'plate' | 'shaker'
   cabinetFinish: 'noyer',
+  upperFinish: null,      // finition des armoires murales — null = comme les bas (REQ-1002)
   islandFinish: 'noyer',
   handle: 'barre-laiton',
   counter: 'quartz-blanc',
@@ -27,6 +28,9 @@ export const state = {
   appliances: { fridge: true, range: true, hood: true, dw: true },
   applianceFinish: 'inox',
   moduleOverrides: {},    // id de module -> 'portes' | 'tiroirs' | 'ouvert'
+  // REQ-1001 : composition persistée par segment de comptoir.
+  // clé de segment -> { widths: [poucesPo...], types: { index: type } }
+  gapPlans: {},
 };
 
 export function setState(patch, meta = {}) {

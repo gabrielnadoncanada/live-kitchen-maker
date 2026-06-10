@@ -214,6 +214,24 @@ travail. Classés par impact sur la crédibilité.
 
 ---
 
+## 10. Feuille de route Personnalisation (2026-06-09) — passer de 10 % à 80 % des cuisinistes
+
+Constat : le système est un excellent **générateur**, pas encore un **configurateur** — le
+client subit la proposition, il ne la compose pas. Priorisation par impact métier :
+
+| Phase | ID | Requis | Statut |
+|-------|----|--------|--------|
+| **P1** | REQ-1001 | **Éditeur de module complet** : au clic, tous les types catalogue compatibles avec la largeur (portes, tiroirs, niche, range-épices 6-12 po, tiroir à déchets 18 po, micro-ondes 27 po), **largeur modifiable** (les voisins se recomposent), **diviser/fusionner**, composition persistée par segment (`state.gapPlans`, clé stable par position de départ ; îlot = clé `isl`, remplissage exact requis). | ✅ |
+| **P1** | REQ-1002 | **Two-tone** : finition des bas ≠ finition des hauts (`state.upperFinish`, nuancier « Finition des hauts ») — l'îlot indépendant existe déjà. Multiplicateurs de prix par zone (base/upper/island) appliqués ligne par ligne au devis SKU ; preset « Contraste brut » livré en two-tone. | ✅ |
+| **P2** | REQ-1003 | **Micro-hotte** (micro-ondes au-dessus de la cuisinière — la config la plus répandue au Québec) en alternative à la hotte cheminée. | ⬜ |
+| **P2** | REQ-1004 | **Four mural + plaque de cuisson séparée** (colonne four OC-DB30/33 au catalogue). | ⬜ |
+| **P3** | REQ-1005 | **Formes galley** (2 murs parallèles) et **péninsule** — la moitié des condos. | ⬜ |
+| **P3** | REQ-1006 | **Évier ou cuisson dans l'îlot** (une rénovation sur deux). | ⬜ |
+| **P4** | REQ-1007 | **Hauteurs de murales au choix** (30/36/42 po du catalogue) + murales jusqu'au plafond avec couronne. | ⬜ |
+| **P5** | REQ-1008 | **Drag direct des électros** en vue plan (frigo/lave-vaisselle comme l'eau et le 240 V). | ⬜ |
+
+---
+
 ## Processus
 
 1. Tout nouveau requis s'ajoute ici avec un ID, une priorité et le statut ⬜.

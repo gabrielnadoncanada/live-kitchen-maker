@@ -261,7 +261,8 @@ export const PRESETS = {
   },
   'contraste-brut': {
     label: 'Contraste brut', colors: ['#222226', '#85664a', '#1d1d20', '#b4afa6'],
-    apply: { cabinetFinish: 'noir-mat', islandFinish: 'chene-fume', doorStyle: 'plate', handle: 'barre-noire', counter: 'granit-noir', backsplash: 'assorti', floor: 'beton-poli', wall: 'gris-perle' },
+    // REQ-1002 : two-tone d'origine — bas noirs, hauts chêne fumé
+    apply: { cabinetFinish: 'noir-mat', upperFinish: 'chene-fume', islandFinish: 'chene-fume', doorStyle: 'plate', handle: 'barre-noire', counter: 'granit-noir', backsplash: 'assorti', floor: 'beton-poli', wall: 'gris-perle' },
   },
 };
 

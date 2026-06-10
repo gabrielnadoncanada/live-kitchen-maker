@@ -62,6 +62,10 @@ const data = {
   })(),
   // garde-manger — hauteur ~90 (≈ notre 2,25 m), prof. 27
   pantry: byWidth(sub('utility-cabinet-pantry'), 90),
+  // rangements spécialisés (REQ-1001)
+  spiceRack: byWidth(sub('base-cabinet-spice-rack-pull-out')),
+  garbagePullOut: byWidth(sub('base-cabinet-garbage-pull-out')),
+  baseMicrowave: byWidth(sub('base-microwave-cabinet')),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales
   filler: byWidth(sub('fillers-base-wall-tall-filler'), 30),
   // panneaux

@@ -2,9 +2,9 @@ import './styles.css';
 import * as THREE from 'three';
 import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
-import { state, subscribe } from './state.js';
+import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showPopover, hidePopover } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, hidePopover } from './ui.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
 import { loadTenant, getTenant, getTheme } from './tenant.js';
@@ -124,9 +124,11 @@ function pickModule(x, y) {
   clearOutline();
   if (!hits.length) { hidePopover(); return; }
   const hit = hits[0].object;
-  const { moduleId, current: cur, width } = hit.userData;
+  const ud = hit.userData;
+  const comp = current.gapComps && current.gapComps[ud.gapKey];
+  if (!comp) { hidePopover(); return; }
   drawOutline(hit);
-  showPopover(x, y, moduleId, cur, width);
+  showModuleEditor(x, y, ud, comp);
 }
 
 function drawOutline(mesh) {
@@ -190,7 +192,7 @@ export async function initApp() {
   buildPanel();
   rebuild();
   document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
-  if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current };
+  if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current, state, setState };
 
   const splash = document.getElementById('splash');
   document.getElementById('startBtn').addEventListener('click', () => {
