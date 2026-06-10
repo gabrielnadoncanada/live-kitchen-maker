@@ -1056,7 +1056,9 @@ export function buildKitchen(state) {
   // ——— REQ-704 : coin aveugle mural — les armoires murales tournent le coin ———
   const WBC_W = 0.76; // 30 po (produit réel : Wall Blind Corner)
   function blindCornerUpper(mirror) {
-    const x0 = mirror ? a - WALL_CAB_D - 0.04 - WBC_W : WALL_CAB_D + 0.04;
+    // le caisson aveugle TOUCHE le mur perpendiculaire ; c'est le ruban voisin
+    // qui bute contre son flanc (pose réelle d'un blind corner)
+    const x0 = mirror ? a - 0.02 - WBC_W : 0.02;
     // une fenêtre ou une porte dans la zone du coin → pas de coin aveugle
     const clash = [...winsByWall.back, ...doorsByWall.back].some(
       (o) => o.pos + o.width / 2 > x0 - 0.05 && o.pos - o.width / 2 < x0 + WBC_W + 0.05
@@ -1096,9 +1098,10 @@ export function buildKitchen(state) {
     // les rubans muraux vont jusqu'au coin (après le coin aveugle ou le ruban perpendiculaire)
     let upLo, upHi;
     if (wk === 'back') {
-      upLo = hasCornerL ? WALL_CAB_D + 0.04 + (wbcL ? WBC_W + 0.004 : 0) : 0.02;
-      upHi = hasCornerR ? a - WALL_CAB_D - 0.04 - (wbcR ? WBC_W + 0.004 : 0) : a - 0.02;
+      upLo = hasCornerL ? (wbcL ? 0.02 + WBC_W + 0.004 : WALL_CAB_D + 0.04) : 0.02;
+      upHi = hasCornerR ? (wbcR ? a - 0.02 - WBC_W - 0.004 : a - WALL_CAB_D - 0.04) : a - 0.02;
     } else {
+      // bute contre le flanc du coin aveugle (prof. 35 cm + jeu de filler)
       upLo = WALL_CAB_D + 0.04;
       upHi = wallLen[wk] - 0.02;
     }
