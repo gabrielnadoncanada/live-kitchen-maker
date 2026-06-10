@@ -1380,13 +1380,18 @@ export function buildKitchen(state) {
     const segs = segsByWall[wallKey] || [];
     if (!segs.length) return;
     const items = [...fixedByWall[wallKey]].sort((p, q) => p.want - q.want);
-    // REQ-108 (NKBA 20) : la cuisinière auto fuit les fenêtres (sécurité incendie)
+    // REQ-108 (NKBA 20) : la cuisinière auto fuit les fenêtres (sécurité incendie).
+    // C'est la HOTTE qui dicte la marge : elle est plus large que la cuisinière
+    // (90 cm + coffrage) et monte en plein dans la hauteur de la fenêtre.
     for (const it of items) {
       if ((it.type !== 'cuisiniere' && it.type !== 'plaque') || !stoveIsAuto) continue;
+      const half = state.appliances.hood
+        ? Math.max(it.w / 2, (state.hoodType || 'cheminee') === 'micro' ? 0.42 : 0.52)
+        : it.w / 2;
       for (const win of winsByWall[wallKey] || []) {
         const lo = win.pos - win.width / 2, hi = win.pos + win.width / 2;
-        if (it.want + it.w / 2 > lo && it.want - it.w / 2 < hi) {
-          const left = lo - it.w / 2 - 0.05, right = hi + it.w / 2 + 0.05;
+        if (it.want + half > lo && it.want - half < hi) {
+          const left = lo - half - 0.05, right = hi + half + 0.05;
           it.want = Math.abs(left - it.want) < Math.abs(right - it.want) ? left : right;
         }
       }

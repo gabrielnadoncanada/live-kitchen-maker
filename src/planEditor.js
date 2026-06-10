@@ -126,7 +126,19 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
     const t = pointerTarget(e, cur.focus.cabWalls);
     if (!t) return;
     const w = FIXTURE_W[key] || 0.8;
-    setState({ constraints: { [key]: { auto: false, wall: t.wall, pos: round5(clampAlong(t.wall, t.along, w, t.f)) } } });
+    let pos = clampAlong(t.wall, t.along, w, t.f);
+    // la cuisinière traîne sa hotte : le drag saute par-dessus les fenêtres
+    // (la hotte ne doit jamais les chevaucher — même en placement manuel)
+    if (key === 'stove' && state.appliances.hood) {
+      const half = (state.hoodType || 'cheminee') === 'micro' ? 0.45 : 0.55;
+      for (const o of state.constraints.openings) {
+        if (o.type !== 'fenetre' || o.wall !== t.wall) continue;
+        const lo = o.pos - o.width / 2 - half, hi = o.pos + o.width / 2 + half;
+        if (pos > lo && pos < hi) pos = pos - lo < hi - pos ? lo : hi;
+      }
+      pos = clampAlong(t.wall, pos, w, t.f);
+    }
+    setState({ constraints: { [key]: { auto: false, wall: t.wall, pos: round5(pos) } } });
   }
 
   // La pièce est recentrée à chaque reconstruction (origine = -a/2, -roomD/2) :
