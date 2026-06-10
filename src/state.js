@@ -12,12 +12,15 @@ export const state = {
   constraints: {
     water: { auto: true, wall: 'back', pos: 2.2 },   // entrée d'eau → position de l'évier
     stove: { auto: true, wall: 'back', pos: 3.4 },   // prise 240 V → position de la cuisinière
+    fridge: { auto: true, wall: 'back', pos: 3.9 },  // REQ-1008 : frigo déplaçable en vue plan
+    dw: { auto: true, wall: 'back', pos: 2.9 },      // REQ-1008 : lave-vaisselle déplaçable
     // ouvertures existantes : fenêtres et portes, positionnées le long d'un mur
     openings: [
       { id: 1, type: 'fenetre', wall: 'back', pos: 2.2, width: 1.25 },
     ],
   },
   preset: 'noyer-chic',
+  wallCabHeight: 30,      // hauteur des murales en pouces : 30 | 36 | 42 (REQ-1007)
   doorStyle: 'plate',     // 'plate' | 'shaker'
   cabinetFinish: 'noyer',
   upperFinish: null,      // finition des armoires murales — null = comme les bas (REQ-1002)

@@ -398,6 +398,13 @@ export function buildPanel() {
   // 5 · ARMOIRES
   const s4 = section('05', 'Les armoires');
   s4.append(segmented([['plate', 'Façade plane'], ['shaker', 'Façade shaker']], (s) => s.doorStyle, (k) => setState({ doorStyle: k, preset: null })));
+  // REQ-1007 : hauteur des armoires murales (30/36 alignées aux colonnes, 42 au plafond 8 pi)
+  s4.append(el('<div class="swatch-label"><span>Hauteur des armoires murales</span></div>'));
+  s4.append(segmented(
+    [['30', '30 po'], ['36', '36 po'], ['42', '42 po · plafond']],
+    (s) => String(s.wallCabHeight || 30),
+    (k) => setState({ wallCabHeight: +k })
+  ));
   s4.append(swatchGroup('Finition des bas', CABINET_FINISHES, (s) => s.cabinetFinish, (k) => setState({ cabinetFinish: k, preset: null })));
   // REQ-1002 : two-tone — finition des armoires murales indépendante des bas
   s4.append(swatchGroup('Finition des hauts', CABINET_FINISHES,

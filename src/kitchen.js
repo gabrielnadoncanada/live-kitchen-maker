@@ -20,11 +20,15 @@ const COUNTER_T = 0.04;
 const COUNTER_TOP = COUNTER_H + COUNTER_T;   // 0.90
 const BASE_D = 0.6;
 const COUNTER_D = 0.66;
-const WALL_BOT = 1.5;
-const WALL_CAB_H = 0.75;
+const TALL_H = 2.25;      // haut des colonnes (et des murales alignées)
+// REQ-1007 : hauteur de murales au choix (30/36/42 po) — mutées par buildKitchen
+let WALL_BOT = TALL_H - 0.762;
+let WALL_CAB_H = 0.762;
+let WALL_FAMILY = 'wall'; // famille SKU selon la hauteur (wall | wall36 | wall42)
+const HOOD_Y = 1.5;       // bas de la hotte murale (60 cm au-dessus de la plaque) — fixe
+const WIN_Y0 = 1.52, WIN_Y1 = 2.2; // la fenêtre ne dépend pas de la hauteur des murales
 const WALL_CAB_D = 0.305; // 12 po — profondeur murale catalogue (REQ-702)
 const PANTRY_D = 0.69;    // 27 po — profondeur garde-manger catalogue (REQ-702)
-const TALL_H = WALL_BOT + WALL_CAB_H;        // 2.25
 // REQ-708 : hauteur de pièce selon le plafond du client (8/9/10 pi) —
 // mutée au début de chaque buildKitchen (construction synchrone)
 let ROOM_H = 2.74;
@@ -459,10 +463,10 @@ function buildMicroHood(applianceMat, matsUpper, manifest) {
 function buildIslandHood(steel) {
   const S = fixedMats();
   const g = new THREE.Group();
-  g.add(box(0.9, 0.06, 0.55, steel, 0, WALL_BOT + 0.2, 0));
-  g.add(box(0.55, 0.18, 0.34, steel, 0, WALL_BOT + 0.32, 0));
-  g.add(box(0.3, ROOM_H - (WALL_BOT + 0.41), 0.3, steel, 0, (WALL_BOT + 0.41 + ROOM_H) / 2, 0));
-  const lamp = box(0.7, 0.006, 0.4, S.glow, 0, WALL_BOT + 0.168, 0);
+  g.add(box(0.9, 0.06, 0.55, steel, 0, HOOD_Y + 0.2, 0));
+  g.add(box(0.55, 0.18, 0.34, steel, 0, HOOD_Y + 0.32, 0));
+  g.add(box(0.3, ROOM_H - (HOOD_Y + 0.41), 0.3, steel, 0, (HOOD_Y + 0.41 + ROOM_H) / 2, 0));
+  const lamp = box(0.7, 0.006, 0.4, S.glow, 0, HOOD_Y + 0.168, 0);
   lamp.castShadow = false;
   g.add(lamp);
   return g;
@@ -493,7 +497,7 @@ function buildWallCab(w, mats, manifest, widthIn = null) {
   const strip = box(w - 0.06, 0.008, 0.02, S.glow, w / 2, -0.006, WALL_CAB_D - 0.08);
   strip.castShadow = false;
   g.add(strip);
-  const s = widthIn != null ? findSku('wall', widthIn) : null;
+  const s = widthIn != null ? findSku(WALL_FAMILY, widthIn) : null;
   if (!manifest.addSku(s, `Armoire murale ${s?.widthIn} po`, { zone })) manifest.add('mur');
   return g;
 }
@@ -502,11 +506,11 @@ function buildWallCab(w, mats, manifest, widthIn = null) {
 function buildHood(steel) {
   const g = new THREE.Group();
   const W = 0.9;
-  g.add(box(W, 0.07, 0.5, steel, 0, WALL_BOT + 0.035, 0.27));
-  g.add(box(W * 0.62, 0.22, 0.34, steel, 0, WALL_BOT + 0.07 + 0.11, 0.2));
-  g.add(box(0.32, ROOM_H - (WALL_BOT + 0.29), 0.32, steel, 0, (WALL_BOT + 0.29 + ROOM_H) / 2, 0.17));
+  g.add(box(W, 0.07, 0.5, steel, 0, HOOD_Y + 0.035, 0.27));
+  g.add(box(W * 0.62, 0.22, 0.34, steel, 0, HOOD_Y + 0.07 + 0.11, 0.2));
+  g.add(box(0.32, ROOM_H - (HOOD_Y + 0.29), 0.32, steel, 0, (HOOD_Y + 0.29 + ROOM_H) / 2, 0.17));
   const S = fixedMats();
-  const lamp = box(W * 0.8, 0.006, 0.3, S.glow, 0, WALL_BOT + 0.002, 0.28);
+  const lamp = box(W * 0.8, 0.006, 0.3, S.glow, 0, HOOD_Y + 0.002, 0.28);
   lamp.castShadow = false;
   g.add(lamp);
   return g;
@@ -550,7 +554,7 @@ function buildWindow(winW) {
   const S = fixedMats();
   const wg = new THREE.Group();
   const fr = new THREE.MeshStandardMaterial({ color: '#f4f1e8', roughness: 0.5 });
-  const y0 = WALL_BOT + 0.02, y1 = WALL_BOT + WALL_CAB_H - 0.05;
+  const y0 = WIN_Y0, y1 = WIN_Y1;
   const t = 0.05, d = 0.07;
   wg.add(box(winW + t * 2, t, d, fr, 0, y1 + t / 2, 0.02));
   wg.add(box(winW + t * 2, t, d, fr, 0, y0 - t / 2, 0.02));
@@ -731,6 +735,12 @@ class Manifest {
 // ————————————————————————— CONSTRUCTION PRINCIPALE —————————————————————————
 export function buildKitchen(state) {
   ROOM_H = CEILINGS[state.ceiling] || CEILINGS[9];
+  // REQ-1007 : 30/36 po alignées en haut avec les colonnes ; 42 po monte du
+  // dosseret standard (54 po) jusqu'au plafond 8 pi (couronne au plafond)
+  const wch = [30, 36, 42].includes(state.wallCabHeight) ? state.wallCabHeight : 30;
+  WALL_CAB_H = { 30: 0.762, 36: 0.914, 42: 1.067 }[wch];
+  WALL_BOT = wch === 42 ? 1.37 : TALL_H - WALL_CAB_H;
+  WALL_FAMILY = wch === 30 ? 'wall' : `wall${wch}`;
   const S = fixedMats();
   const manifest = new Manifest();
   const root = new THREE.Group();
@@ -1020,18 +1030,31 @@ export function buildKitchen(state) {
   // (même position 240 V) et une colonne four rejoint la banque de colonnes
   const cookingMural = (state.cooking || 'cuisiniere') === 'mural';
   // REQ-1006 : l'évier (et son lave-vaisselle) ou la cuisson peuvent vivre dans l'îlot
+  // REQ-1008 : frigo et lave-vaisselle déplaçables en vue plan (positions manuelles)
+  const consFridge = cons.fridge && !cons.fridge.auto && cabWalls.includes(cons.fridge.wall) ? cons.fridge : null;
+  const consDw = cons.dw && !cons.dw.auto && cabWalls.includes(cons.dw.wall) ? cons.dw : null;
   if (islFeature !== 'evier') {
     addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
-    if (state.appliances.dw) addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
+    if (state.appliances.dw) {
+      if (consDw) addFixed(consDw.wall, 'lavevaisselle', DW_W, consDw.pos, 4);
+      else addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
+    }
   }
   if (state.appliances.range && islFeature !== 'plaque') {
     addFixed(stoveWall, cookingMural ? 'plaque' : 'cuisiniere', RANGE_W, stoveAlong, 2);
   }
   if (state.appliances.fridge) {
-    const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
-    if (endSeg) {
-      addFixed(fridgeWall, 'frigo', FRIDGE_W, endSeg[1] - FRIDGE_W / 2, 3, true);
-      addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - FRIDGE_W - PANTRY_W / 2, 5, true);
+    if (consFridge) {
+      addFixed(consFridge.wall, 'frigo', FRIDGE_W, consFridge.pos, 3, true);
+      const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
+      // le garde-manger reste en bout de ruban, là où il y a de la place
+      if (endSeg) addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - PANTRY_W / 2, 5, true);
+    } else {
+      const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
+      if (endSeg) {
+        addFixed(fridgeWall, 'frigo', FRIDGE_W, endSeg[1] - FRIDGE_W / 2, 3, true);
+        addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - FRIDGE_W - PANTRY_W / 2, 5, true);
+      }
     }
   }
   if (state.appliances.range && cookingMural) {
@@ -1861,6 +1884,13 @@ export function buildKitchen(state) {
   if (placed.cuisiniere && !placed.cuisiniere.isl) {
     discMarker('#d9763a', '⚡ 240 V', { plan: 'stove' }, pointFor(placed.cuisiniere.wall, placed.cuisiniere.along, 0.3, PLAN_Y));
   }
+  // REQ-1008 : frigo et lave-vaisselle se déplacent au doigt en vue plan
+  if (placed.frigo) {
+    discMarker('#7d8ea0', '🧊 Frigo', { plan: 'fridge' }, pointFor(placed.frigo.wall, placed.frigo.along, 0.4, PLAN_Y));
+  }
+  if (placed.dw && !placed.dw.isl) {
+    discMarker('#5f8b78', '🍽 Lave-vaisselle', { plan: 'dw' }, pointFor(placed.dw.wall, placed.dw.along, 0.34, PLAN_Y));
+  }
   // poignées de redimensionnement des murs
   function dimHandle(dim, x, z) {
     const g = new THREE.Group();
@@ -1926,7 +1956,7 @@ export function buildKitchen(state) {
     return g;
   }
   {
-    const wy0 = WALL_BOT + 0.02, wy1 = WALL_BOT + WALL_CAB_H - 0.05;
+    const wy0 = WIN_Y0, wy1 = WIN_Y1;
     for (const wallKey of ['back', 'left', 'right']) {
       for (const win of winsByWall[wallKey]) {
         elevHighlight(wallKey, win.pos, win.width + 0.1, wy0 - 0.05, wy1 + 0.05, 0.1, '#7fb7e8',

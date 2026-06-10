@@ -120,11 +120,12 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
     patchOpening(id, { wall: t.wall, pos });
   }
 
+  const FIXTURE_W = { water: 0.9, stove: 0.77, fridge: 0.93, dw: 0.61 };
   function moveFixture(key, e) {
     const cur = getCurrent();
     const t = pointerTarget(e, cur.focus.cabWalls);
     if (!t) return;
-    const w = key === 'water' ? 0.9 : 0.77;
+    const w = FIXTURE_W[key] || 0.8;
     setState({ constraints: { [key]: { auto: false, wall: t.wall, pos: round5(clampAlong(t.wall, t.along, w, t.f)) } } });
   }
 
@@ -265,9 +266,11 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
       ]);
     } else {
       const key = ud.plan || ud.elev;
-      if (key !== 'water' && key !== 'stove') return;
+      const titles = { water: 'Entrée d’eau', stove: 'Prise cuisinière', fridge: 'Réfrigérateur', dw: 'Lave-vaisselle' };
+      if (!titles[key]) return;
       const cur = state.constraints[key];
-      showMenu(e.clientX, e.clientY, key === 'water' ? 'Entrée d’eau' : 'Prise cuisinière', [
+      if (!cur) return;
+      showMenu(e.clientX, e.clientY, titles[key], [
         cur.auto
           ? { ico: '📌', label: 'Glissez-moi pour fixer la position', onPick: () => {} }
           : { ico: '🔄', label: 'Remettre en automatique', onPick: () => setState({ constraints: { [key]: { ...cur, auto: true } } }) },
@@ -320,7 +323,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
       const ud = drag.ud;
       const kind = ud.plan || ud.elev;
       if (kind === 'opening') moveOpening(ud.id, e);
-      else if (kind === 'water' || kind === 'stove') moveFixture(kind, e);
+      else if (['water', 'stove', 'fridge', 'dw'].includes(kind)) moveFixture(kind, e);
       else if (ud.plan === 'dim') moveDim(ud.dim, e);
       return;
     }

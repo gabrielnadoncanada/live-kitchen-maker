@@ -38,10 +38,18 @@ const data = {
   baseStandard: byWidth(sub('base-cabinet-standard')),
   baseDrawer: byWidth(sub('base-cabinet-drawer')),
   baseCorner: byWidth(sub('base-cabinet-corner')),
-  // murales — hauteur 30 po (≈ notre 0,75 m), prof. 12
+  // murales — prof. 12, par hauteur (REQ-1007 : 30/36/42 po au choix)
   wall: byWidth(
     bp.filter((r) => r.sub_category === 'wall-cabinet-standard' && num(r.d) === 12),
     30
+  ),
+  wall36: byWidth(
+    bp.filter((r) => r.sub_category === 'wall-cabinet-standard' && num(r.d) === 12 && num(r.h) === 36),
+    36
+  ),
+  wall42: byWidth(
+    bp.filter((r) => r.sub_category === 'wall-cabinet-standard' && num(r.d) === 12 && num(r.h) === 42),
+    42
   ),
   // au-dessus du frigo : murales basses (hauteur ~15), prof. la plus profonde dispo
   overFridge: byWidth(

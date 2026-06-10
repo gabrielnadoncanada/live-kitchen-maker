@@ -227,8 +227,8 @@ client subit la proposition, il ne la compose pas. Priorisation par impact méti
 | **P2** | REQ-1004 | **Four mural + plaque de cuisson séparée** (`state.cooking: 'mural'`). Plaque = centre de cuisson (240 V, triangle, hotte) posée sur comptoir **continu** au-dessus d'un caisson à tiroirs DRBC30 ; colonne four OC33X103.5 rejoint la banque de colonnes (coupe comptoir/dosseret/murales, filets NKBA 12/16, marge chaleur REQ-107). | ✅ |
 | **P3** | REQ-1005 | **Formes galley** (2 murs parallèles) et **péninsule** — la moitié des condos. Forme « Couloir » (`layout:'galley'`, mur `front` à part entière : solveur, ouvertures, vue plan, maison de poupée ; b = profondeur du corridor). Péninsule (`islandMode:'peninsule'`) rattachée au mur droit : une seule cascade, un seul panneau d'habillage, comptoir jusqu'au mur. | ✅ |
 | **P3** | REQ-1006 | **Évier ou cuisson dans l'îlot** (une rénovation sur deux). `islandFeature:'evier'\|'plaque'` : le module central de l'îlot devient évier (+ lave-vaisselle voisin, cuve découpée dans le comptoir, robinet côté repas) ou plaque (hotte d'îlot suspendue) ; l'appareil correspondant quitte les murs ; triangle NKBA suit les coordonnées d'îlot. | ✅ |
-| **P4** | REQ-1007 | **Hauteurs de murales au choix** (30/36/42 po du catalogue) + murales jusqu'au plafond avec couronne. | ⬜ |
-| **P5** | REQ-1008 | **Drag direct des électros** en vue plan (frigo/lave-vaisselle comme l'eau et le 240 V). | ⬜ |
+| **P4** | REQ-1007 | **Hauteurs de murales au choix** (30/36/42 po du catalogue) + murales jusqu'au plafond avec couronne. `state.wallCabHeight` : 30/36 alignées en haut avec les colonnes, 42 monte du dosseret standard (54 po) jusqu'au plafond 8 pi, couronne au ras du plafond. Familles SKU wall/wall36/wall42 ; fenêtre et hotte figées sur leurs propres constantes. | ✅ |
+| **P5** | REQ-1008 | **Drag direct des électros** en vue plan (frigo/lave-vaisselle comme l'eau et le 240 V). Marqueurs 🧊/🍽 déplaçables (`constraints.fridge/dw`), menu « remettre en automatique », le frigo reste soumis aux filets (fenêtres, NKBA 12) ; avertissement si le lave-vaisselle s'éloigne de l'évier. | ✅ |
 
 ---
 

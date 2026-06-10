@@ -98,6 +98,14 @@ export function computeNkbaWarnings(nkba) {
     }
   }
 
+  // ——— REQ-208 : lave-vaisselle à ≤ 36 po de l'évier (drag manuel possible) ———
+  if (pts.dw && pts.evier) {
+    const L = dist(pts.dw, pts.evier);
+    if (L > 1.15) {
+      out.push({ id: 'NKBA16', msg: `Lave-vaisselle à ${cm(L)} de l'évier (recommandé : ≤ 91 cm du bord du caisson).` });
+    }
+  }
+
   // ——— NKBA 16 : dégagement debout au lave-vaisselle (21 po de chaque côté) ———
   if (placed.dw) {
     for (const key of ['frigo', 'pantry', 'four']) {
