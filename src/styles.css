@@ -30,14 +30,22 @@
   --font-body: "Albert Sans", "Segoe UI", sans-serif;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+  /* pas de flash bleu natif au tap (Android/Chrome) */
+  -webkit-tap-highlight-color: transparent;
+}
 html, body { height: 100%; overflow: hidden; }
 body {
   font-family: var(--font-body);
   background: var(--ink-deep);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  /* pas de sélection de texte bleue au double-tap — les champs la gardent */
+  user-select: none;
+  -webkit-user-select: none;
 }
+input, textarea { user-select: text; -webkit-user-select: text; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 
 /* ————— Écran d'accueil ————— */
