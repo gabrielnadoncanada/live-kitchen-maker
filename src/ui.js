@@ -407,6 +407,26 @@ export function buildPanel() {
     sw.addEventListener('click', () => setState({ appliances: { [key]: !state.appliances[key] } }));
     updaters.push((s) => sw.classList.toggle('on', !!s.appliances[key]));
     s6.append(row);
+    // REQ-1004 : cuisinière monobloc ou four mural + plaque de cuisson séparée
+    if (key === 'range') {
+      const wrap = el('<div class="fixture-detail"></div>');
+      wrap.append(segmented(
+        [['cuisiniere', 'Cuisinière'], ['mural', 'Four mural + plaque']],
+        (s) => s.cooking || 'cuisiniere', (k) => setState({ cooking: k })
+      ));
+      s6.append(wrap);
+      updaters.push((s) => { wrap.style.display = s.appliances.range ? '' : 'none'; });
+    }
+    // REQ-1003 : hotte cheminée ou micro-hotte combinée (la plus répandue au Québec)
+    if (key === 'hood') {
+      const wrap = el('<div class="fixture-detail"></div>');
+      wrap.append(segmented(
+        [['cheminee', 'Hotte cheminée'], ['micro', 'Micro-hotte combinée']],
+        (s) => s.hoodType || 'cheminee', (k) => setState({ hoodType: k })
+      ));
+      s6.append(wrap);
+      updaters.push((s) => { wrap.style.display = s.appliances.hood ? '' : 'none'; });
+    }
   }
   root.append(s6);
 

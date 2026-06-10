@@ -223,8 +223,8 @@ client subit la proposition, il ne la compose pas. Priorisation par impact méti
 |-------|----|--------|--------|
 | **P1** | REQ-1001 | **Éditeur de module complet** : au clic, tous les types catalogue compatibles avec la largeur (portes, tiroirs, niche, range-épices 6-12 po, tiroir à déchets 18 po, micro-ondes 27 po), **largeur modifiable** (les voisins se recomposent), **diviser/fusionner**, composition persistée par segment (`state.gapPlans`, clé stable par position de départ ; îlot = clé `isl`, remplissage exact requis). | ✅ |
 | **P1** | REQ-1002 | **Two-tone** : finition des bas ≠ finition des hauts (`state.upperFinish`, nuancier « Finition des hauts ») — l'îlot indépendant existe déjà. Multiplicateurs de prix par zone (base/upper/island) appliqués ligne par ligne au devis SKU ; preset « Contraste brut » livré en two-tone. | ✅ |
-| **P2** | REQ-1003 | **Micro-hotte** (micro-ondes au-dessus de la cuisinière — la config la plus répandue au Québec) en alternative à la hotte cheminée. | ⬜ |
-| **P2** | REQ-1004 | **Four mural + plaque de cuisson séparée** (colonne four OC-DB30/33 au catalogue). | ⬜ |
+| **P2** | REQ-1003 | **Micro-hotte** (micro-ondes au-dessus de la cuisson — la config la plus répandue au Québec) en alternative à la hotte cheminée (`state.hoodType`). Armoire courte W3015 au-dessus (zone hauts), micro non vendu, zone murale réservée plus étroite que la cheminée. | ✅ |
+| **P2** | REQ-1004 | **Four mural + plaque de cuisson séparée** (`state.cooking: 'mural'`). Plaque = centre de cuisson (240 V, triangle, hotte) posée sur comptoir **continu** au-dessus d'un caisson à tiroirs DRBC30 ; colonne four OC33X103.5 rejoint la banque de colonnes (coupe comptoir/dosseret/murales, filets NKBA 12/16, marge chaleur REQ-107). | ✅ |
 | **P3** | REQ-1005 | **Formes galley** (2 murs parallèles) et **péninsule** — la moitié des condos. | ⬜ |
 | **P3** | REQ-1006 | **Évier ou cuisson dans l'îlot** (une rénovation sur deux). | ⬜ |
 | **P4** | REQ-1007 | **Hauteurs de murales au choix** (30/36/42 po du catalogue) + murales jusqu'au plafond avec couronne. | ⬜ |

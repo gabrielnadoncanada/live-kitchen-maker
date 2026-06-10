@@ -66,6 +66,8 @@ const data = {
   spiceRack: byWidth(sub('base-cabinet-spice-rack-pull-out')),
   garbagePullOut: byWidth(sub('base-cabinet-garbage-pull-out')),
   baseMicrowave: byWidth(sub('base-microwave-cabinet')),
+  // colonne four mural (REQ-1004) — OC33X103.5
+  ovenColumn: byWidth(sub('utility-cabinet-oven'), 100),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales
   filler: byWidth(sub('fillers-base-wall-tall-filler'), 30),
   // panneaux

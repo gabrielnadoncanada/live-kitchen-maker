@@ -89,17 +89,18 @@ export function computeNkbaWarnings(nkba) {
   if (placed.evier && placed.cuisiniere && placed.evier.wall === placed.cuisiniere.wall) {
     const lo = Math.min(placed.evier.along, placed.cuisiniere.along);
     const hi = Math.max(placed.evier.along, placed.cuisiniere.along);
-    for (const key of ['frigo', 'pantry']) {
+    const colNames = { frigo: 'réfrigérateur', pantry: 'garde-manger', four: 'four mural' };
+    for (const key of ['frigo', 'pantry', 'four']) {
       const t = placed[key];
       if (t && t.wall === placed.evier.wall && t.along > lo && t.along < hi) {
-        out.push({ id: 'NKBA12', msg: `Le ${key === 'frigo' ? 'réfrigérateur' : 'garde-manger'} coupe le plan de travail entre l'évier et la cuisinière.` });
+        out.push({ id: 'NKBA12', msg: `Le ${colNames[key]} coupe le plan de travail entre l'évier et la cuisinière.` });
       }
     }
   }
 
   // ——— NKBA 16 : dégagement debout au lave-vaisselle (21 po de chaque côté) ———
   if (placed.dw) {
-    for (const key of ['frigo', 'pantry']) {
+    for (const key of ['frigo', 'pantry', 'four']) {
       const t = placed[key];
       if (!t || t.wall !== placed.dw.wall) continue;
       const gap = Math.abs(t.along - placed.dw.along) - t.w / 2 - placed.dw.w / 2;

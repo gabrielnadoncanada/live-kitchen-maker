@@ -26,6 +26,8 @@ export const state = {
   floor: 'beton-poli',
   wall: 'blanc-casse',
   appliances: { fridge: true, range: true, hood: true, dw: true },
+  cooking: 'cuisiniere',  // 'cuisiniere' | 'mural' — four mural + plaque séparée (REQ-1004)
+  hoodType: 'cheminee',   // 'cheminee' | 'micro' — micro-hotte combinée (REQ-1003)
   applianceFinish: 'inox',
   moduleOverrides: {},    // id de module -> 'portes' | 'tiroirs' | 'ouvert'
   // REQ-1001 : composition persistée par segment de comptoir.

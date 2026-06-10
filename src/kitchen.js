@@ -33,6 +33,7 @@ const DOOR_T = 0.019;
 const GAP = 0.004;
 
 const SINK_W = 0.9, DW_W = 0.61, RANGE_W = 0.77, FRIDGE_W = 0.93, PANTRY_W = 0.62;
+const OVEN_W = 0.84; // colonne four mural 33 po (REQ-1004)
 
 // matériaux fixes partagés
 const shared = {};
@@ -212,6 +213,34 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     return g;
   }
 
+  // REQ-1004 : caisson à tiroirs sous la plaque de cuisson — le comptoir continue
+  // au-dessus, la plaque vitrocéramique s'y pose (l'appareil n'est pas vendu)
+  if (type === 'plaque') {
+    let y = frontY0 + frontH;
+    [0.5, 0.5].forEach((frac) => {
+      const dh = frontH * frac - GAP;
+      y -= frontH * frac;
+      const f = makeFront(w - GAP * 2, dh, finish, doorStyle);
+      f.position.set(w / 2, y + (frontH * frac) / 2, zF);
+      g.add(f);
+      const h = makeHandle(handleKind, handleMat, false, Math.min(0.3, w * 0.45));
+      if (h) { h.position.set(w / 2, y + (frontH * frac) / 2 + dh * 0.32, zF + DOOR_T / 2); g.add(h); }
+      manifest.handles++;
+    });
+    const plateZ = BASE_D / 2 + 0.03;
+    g.add(box(w - 0.06, 0.012, BASE_D - 0.14, S.blackGlass, w / 2, COUNTER_TOP + 0.006, plateZ));
+    for (const [dx, dz] of [[-0.17, -0.11], [0.17, -0.11], [-0.17, 0.12], [0.17, 0.12]]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.005, 10, 32), S.darkMetal);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(w / 2 + dx, COUNTER_TOP + 0.014, plateZ + dz);
+      ring.castShadow = true;
+      g.add(ring);
+    }
+    const s = findSku('baseDrawer', widthIn ?? Math.round(w / IN));
+    if (!manifest.addSku(s, `Caisson sous plaque de cuisson ${s?.widthIn} po`, { zone })) manifest.add('base-tiroirs');
+    return g;
+  }
+
   if (type === 'tiroirs') {
     const hs = [0.30, 0.30, 0.40];
     let y = frontY0 + frontH;
@@ -330,6 +359,84 @@ function buildPantry(mats, manifest) {
   manifest.handles += 2;
   const s = findSku('pantry', Math.round(W / IN));
   if (!manifest.addSku(s, `Garde-manger ${s?.widthIn} po`)) manifest.add('garde-manger');
+  return g;
+}
+
+// ——— colonne four mural (REQ-1004) — tiroir en bas, four double au centre,
+// armoire en haut. Les fours eux-mêmes ne sont pas vendus (planification). ———
+function buildOvenColumn(mats, applianceMat, manifest) {
+  const { finish, handleKind, handleMat, doorStyle } = mats;
+  const S = fixedMats();
+  const g = new THREE.Group();
+  const W = OVEN_W, D = PANTRY_D;
+  g.add(box(W, PLINTH, D - 0.07, finish, W / 2, PLINTH / 2, (D - 0.07) / 2));
+  g.add(box(W - 0.004, TALL_H - PLINTH, D - DOOR_T, finish, W / 2, PLINTH + (TALL_H - PLINTH) / 2, (D - DOOR_T) / 2));
+  const zF = D - DOOR_T / 2;
+  // tiroir sous le four
+  const drH = 0.42;
+  const f1 = makeFront(W - GAP * 2, drH, finish, doorStyle);
+  f1.position.set(W / 2, PLINTH + drH / 2, zF);
+  g.add(f1);
+  const h1 = makeHandle(handleKind, handleMat, false, Math.min(0.3, W * 0.45));
+  if (h1) { h1.position.set(W / 2, PLINTH + drH - 0.06, zF + DOOR_T / 2); g.add(h1); }
+  manifest.handles++;
+  // four principal + four compact au-dessus
+  let y = PLINTH + drH + GAP;
+  for (const fh of [0.72, 0.45]) {
+    g.add(box(W - 0.05, fh, 0.02, applianceMat, W / 2, y + fh / 2, zF));
+    g.add(box(W - 0.16, fh - 0.14, 0.015, S.blackGlass, W / 2, y + fh / 2 - 0.025, zF + 0.008));
+    const bar = cyl(0.009, W - 0.22, S.darkMetal, W / 2, y + fh - 0.055, zF + 0.035);
+    bar.rotation.z = Math.PI / 2;
+    g.add(bar);
+    y += fh + GAP;
+  }
+  // armoire à deux portes en haut
+  const dH = TALL_H - y - GAP;
+  const dw = (W - GAP * 3) / 2;
+  [GAP + dw / 2, GAP * 2 + dw * 1.5].forEach((x) => {
+    const f = makeFront(dw, dH, finish, doorStyle);
+    f.position.set(x, y + dH / 2, zF);
+    g.add(f);
+    const h = makeHandle(handleKind, handleMat, false, 0.14);
+    if (h) { h.position.set(x, y + 0.07, zF + DOOR_T / 2); g.add(h); }
+    manifest.handles++;
+  });
+  const s = findSku('ovenColumn', Math.round(W / IN));
+  if (!manifest.addSku(s, `Colonne four mural ${s?.widthIn} po`)) manifest.add('garde-manger');
+  return g;
+}
+
+// ——— micro-hotte combinée (REQ-1003) — micro-ondes au-dessus de la cuisson,
+// armoire courte alignée au haut des murales. Centrée sur x=0, mur en z=0. ———
+function buildMicroHood(applianceMat, matsUpper, manifest) {
+  const S = fixedMats();
+  const g = new THREE.Group();
+  const W = 0.76; // 30 po
+  const cabH = 0.46, cabY0 = TALL_H - cabH;
+  const zF = WALL_CAB_D - DOOR_T / 2;
+  g.add(box(W - 0.004, cabH, WALL_CAB_D - DOOR_T, matsUpper.finish, 0, cabY0 + cabH / 2, (WALL_CAB_D - DOOR_T) / 2));
+  const dw = (W - GAP * 3) / 2;
+  [-(dw + GAP) / 2, (dw + GAP) / 2].forEach((x) => {
+    const f = makeFront(dw, cabH - GAP * 2, matsUpper.finish, matsUpper.doorStyle);
+    f.position.set(x, cabY0 + cabH / 2, zF);
+    g.add(f);
+    const h = makeHandle(matsUpper.handleKind, matsUpper.handleMat, false, 0.14);
+    if (h) { h.position.set(x, cabY0 + 0.06, zF + DOOR_T / 2); g.add(h); }
+    manifest.handles++;
+  });
+  // micro-ondes hotte sous l'armoire (appareil non vendu)
+  const mH = 0.42, mD = 0.4;
+  g.add(box(W, mH, mD, applianceMat, 0, cabY0 - mH / 2, mD / 2));
+  g.add(box(W - 0.06, mH - 0.12, 0.012, S.blackGlass, 0, cabY0 - mH / 2 + 0.025, mD + 0.004));
+  const bar = cyl(0.008, W - 0.2, S.darkMetal, 0, cabY0 - mH + 0.05, mD + 0.02);
+  bar.rotation.z = Math.PI / 2;
+  g.add(bar);
+  // bandeau lumineux d'appoint sous le micro
+  const lamp = box(W - 0.2, 0.005, 0.18, S.glow, 0, cabY0 - mH - 0.004, mD / 2 + 0.05);
+  lamp.castShadow = false;
+  g.add(lamp);
+  const s = findSku('overFridge', 30);
+  if (!manifest.addSku(s, 'Armoire au-dessus de la micro-hotte', { zone: 'upper' })) manifest.add('mur');
   return g;
 }
 
@@ -795,14 +902,24 @@ export function buildKitchen(state) {
   function addFixed(wallKey, type, w, want, prio, tall = false) {
     fixedByWall[wallKey].push({ type, w, want, prio, tall });
   }
+  // REQ-1004 : en mode « four mural », la cuisinière devient une plaque de cuisson
+  // (même position 240 V) et une colonne four rejoint la banque de colonnes
+  const cookingMural = (state.cooking || 'cuisiniere') === 'mural';
   addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
   if (state.appliances.dw) addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
-  if (state.appliances.range) addFixed(stoveWall, 'cuisiniere', RANGE_W, stoveAlong, 2);
+  if (state.appliances.range) addFixed(stoveWall, cookingMural ? 'plaque' : 'cuisiniere', RANGE_W, stoveAlong, 2);
   if (state.appliances.fridge) {
     const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
     if (endSeg) {
       addFixed(fridgeWall, 'frigo', FRIDGE_W, endSeg[1] - FRIDGE_W / 2, 3, true);
       addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - FRIDGE_W - PANTRY_W / 2, 5, true);
+    }
+  }
+  if (state.appliances.range && cookingMural) {
+    const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
+    if (endSeg) {
+      const off = state.appliances.fridge ? FRIDGE_W + PANTRY_W : 0;
+      addFixed(fridgeWall, 'four-mural', OVEN_W, endSeg[1] - off - OVEN_W / 2, 2.5, true);
     }
   }
 
@@ -890,7 +1007,7 @@ export function buildKitchen(state) {
     const items = [...fixedByWall[wallKey]].sort((p, q) => p.want - q.want);
     // REQ-108 (NKBA 20) : la cuisinière auto fuit les fenêtres (sécurité incendie)
     for (const it of items) {
-      if (it.type !== 'cuisiniere' || !stoveIsAuto) continue;
+      if ((it.type !== 'cuisiniere' && it.type !== 'plaque') || !stoveIsAuto) continue;
       for (const win of winsByWall[wallKey] || []) {
         const lo = win.pos - win.width / 2, hi = win.pos + win.width / 2;
         if (it.want + it.w / 2 > lo && it.want - it.w / 2 < hi) {
@@ -901,7 +1018,7 @@ export function buildKitchen(state) {
     }
     // REQ-209 (NKBA 12) : zone interdite aux colonnes entre l'évier et la cuisinière
     const sinkF = items.find((i) => i.type === 'evier');
-    const rangeF = items.find((i) => i.type === 'cuisiniere');
+    const rangeF = items.find((i) => i.type === 'cuisiniere' || i.type === 'plaque');
     const tiLo = sinkF && rangeF ? Math.min(sinkF.want, rangeF.want) : null;
     const tiHi = sinkF && rangeF ? Math.max(sinkF.want, rangeF.want) : null;
     // les colonnes se recalent dans le sous-segment pleine hauteur le plus proche,
@@ -964,8 +1081,9 @@ export function buildKitchen(state) {
     // REQ-107 : marge de comptoir obligatoire entre la cuisinière et une colonne
     // (chaleur + NKBA 19) — l'espace créé est rempli par un caisson/filler avec comptoir
     const isTall = (it) => it && (it.type === 'frigo' || it.type === 'garde-manger');
+    const isHot = (it) => it && (it.type === 'cuisiniere' || it.type === 'plaque');
     const reqGap = (p, q) =>
-      (p && q && ((p.type === 'cuisiniere' && isTall(q)) || (isTall(p) && q.type === 'cuisiniere'))) ? 0.31 : 0;
+      (p && q && ((isHot(p) && isTall(q)) || (isTall(p) && isHot(q)))) ? 0.31 : 0;
     segs.forEach(([s0, s1], si) => {
       let segItems = bySeg[si].sort((p, q) => p.want - q.want);
       let xs;
@@ -986,7 +1104,8 @@ export function buildKitchen(state) {
           xs[i] = Math.max(xs[i], xs[i - 1] + segItems[i - 1].w + reqGap(segItems[i - 1], segItems[i]));
         }
         const contraint = (it) =>
-          (it.type === 'evier' && !sinkIsAuto) || (it.type === 'cuisiniere' && !stoveIsAuto);
+          (it.type === 'evier' && !sinkIsAuto) ||
+          ((it.type === 'cuisiniere' || it.type === 'plaque') && !stoveIsAuto);
         const di = segItems.findIndex(
           (it, i) => contraint(it) && Math.abs(xs[i] + it.w / 2 - it.want) > 0.2
         );
@@ -1097,9 +1216,16 @@ export function buildKitchen(state) {
         } else if (type === 'garde-manger') {
           g = buildPantry(mats, manifest);
           placed.pantry = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
+        } else if (type === 'four-mural') {
+          // REQ-1004 : colonne four mural — colonne pleine hauteur comme le garde-manger
+          g = buildOvenColumn(mats, applianceMat, manifest);
+          placed.four = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
         } else {
           g = buildBase(slot.w, type, mats, manifest, slot.widthIn ?? null);
           if (type === 'cuisiniere') { manifest.appliances.range = true; placed.cuisiniere = { wall: wallKey, along: along + slot.w / 2, w: slot.w }; }
+          // REQ-1004 : la plaque est le centre de cuisson (triangle, hotte, plan) —
+          // mais le comptoir continue au-dessus (drapeau plaque)
+          if (type === 'plaque') { manifest.appliances.range = true; placed.cuisiniere = { wall: wallKey, along: along + slot.w / 2, w: slot.w, plaque: true }; }
           if (type === 'lavevaisselle') {
             manifest.appliances.dw = true;
             placed.dw = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
@@ -1179,12 +1305,13 @@ export function buildKitchen(state) {
     else { lo = COUNTER_D + 0.002; hi = wallLen[wallKey]; }
     let spans = [[lo, hi]];
     for (const door of doorsByWall[wallKey]) spans = cut(spans, door.pos - door.width / 2 - 0.04, door.pos + door.width / 2 + 0.04);
-    if (placed.cuisiniere && placed.cuisiniere.wall === wallKey) {
+    // la cuisinière coupe le comptoir ; la plaque de cuisson s'y pose (REQ-1004)
+    if (placed.cuisiniere && !placed.cuisiniere.plaque && placed.cuisiniere.wall === wallKey) {
       spans = cut(spans, placed.cuisiniere.along - RANGE_W / 2, placed.cuisiniere.along + RANGE_W / 2);
     }
-    // REQ-801 : le comptoir s'interrompt aux colonnes (frigo, garde-manger) —
+    // REQ-801 : le comptoir s'interrompt aux colonnes (frigo, garde-manger, four) —
     // il ne doit jamais les traverser, et leur emprise ne se facture pas en pi²
-    for (const tall of [placed.frigo, placed.pantry]) {
+    for (const tall of [placed.frigo, placed.pantry, placed.four]) {
       if (tall && tall.wall === wallKey) {
         spans = cut(spans, tall.along - tall.w / 2, tall.along + tall.w / 2);
       }
@@ -1223,7 +1350,7 @@ export function buildKitchen(state) {
     let spans = [[0.01, wallLen[wk] - 0.01]]; // jusqu'au coin (murret) sur tous les murs
     for (const door of doorsByWall[wk]) spans = cut(spans, door.pos - door.width / 2 - 0.04, door.pos + door.width / 2 + 0.04);
     // REQ-801 : pas de dosseret (ni de pi² facturés) derrière les colonnes
-    for (const tall of [placed.frigo, placed.pantry]) {
+    for (const tall of [placed.frigo, placed.pantry, placed.four]) {
       if (tall && tall.wall === wk) spans = cut(spans, tall.along - tall.w / 2, tall.along + tall.w / 2);
     }
     for (const [s0, s1] of spans) {
@@ -1290,10 +1417,13 @@ export function buildKitchen(state) {
     }
     for (const win of winsByWall[wk]) zones = cut(zones, win.pos - win.width / 2 - 0.08, win.pos + win.width / 2 + 0.08);
     if (placed.cuisiniere && placed.cuisiniere.wall === wk && state.appliances.hood) {
-      zones = cut(zones, placed.cuisiniere.along - 0.5, placed.cuisiniere.along + 0.5);
+      // REQ-1003 : la micro-hotte (30 po) réserve une zone plus étroite que la cheminée
+      const half = (state.hoodType || 'cheminee') === 'micro' ? 0.39 : 0.5;
+      zones = cut(zones, placed.cuisiniere.along - half, placed.cuisiniere.along + half);
     }
     if (placed.frigo && placed.frigo.wall === wk) zones = cut(zones, placed.frigo.along - placed.frigo.w / 2 - 0.004, placed.frigo.along + placed.frigo.w / 2 + 0.004);
     if (placed.pantry && placed.pantry.wall === wk) zones = cut(zones, placed.pantry.along - placed.pantry.w / 2 - 0.004, placed.pantry.along + placed.pantry.w / 2 + 0.004);
+    if (placed.four && placed.four.wall === wk) zones = cut(zones, placed.four.along - placed.four.w / 2 - 0.004, placed.four.along + placed.four.w / 2 + 0.004);
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
       let cx = z0;
@@ -1319,15 +1449,16 @@ export function buildKitchen(state) {
     }
   }
 
-  // ——— hotte ———
+  // ——— hotte : cheminée ou micro-hotte combinée (REQ-1003) ———
   if (state.appliances.hood && placed.cuisiniere) {
-    const hood = buildHood(applianceMat);
+    const micro = (state.hoodType || 'cheminee') === 'micro';
+    const hood = micro ? buildMicroHood(applianceMat, matsUpper, manifest) : buildHood(applianceMat);
     const p = centeredPlacement(placed.cuisiniere.wall, placed.cuisiniere.along);
     hood.position.copy(p.pos);
     hood.rotation.y = p.rotY;
     inner.add(hood);
     manifest.appliances.hood = true;
-    manifest.add('hotte-coffrage');
+    if (!micro) manifest.add('hotte-coffrage');
   }
 
   // ——— îlot ———
@@ -1690,7 +1821,7 @@ export function buildKitchen(state) {
     wanted: { frigo: state.appliances.fridge, dw: state.appliances.dw, cuisiniere: state.appliances.range },
     placed: {
       evier: placed.evier, cuisiniere: placed.cuisiniere,
-      frigo: placed.frigo, pantry: placed.pantry, dw: placed.dw,
+      frigo: placed.frigo, pantry: placed.pantry, dw: placed.dw, four: placed.four,
     },
     pts: {},
     spans: {},
