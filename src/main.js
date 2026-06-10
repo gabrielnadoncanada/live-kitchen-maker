@@ -4,7 +4,7 @@ import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, hidePopover, showToast } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast } from './ui.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
@@ -144,19 +144,18 @@ function setupMobileSheet() {
 // le popover module (ui.js) demande à voir le meuble : on pince le sheet
 document.addEventListener('sheet:peek', () => { if (mobileMq.matches) sheet.set(0); });
 
-const hintChip = document.querySelector('.hint-chip');
 document.getElementById('viewBtns').addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
   document.querySelectorAll('#viewBtns button').forEach((b) => b.classList.toggle('active', b === btn));
   const view = btn.dataset.view;
   planEd.setMode(view);
-  if (hintChip) {
-    hintChip.textContent = view === 'plan'
-      ? '✏️ Glissez appareils, fenêtres et portes · cliquez un mur pour ajouter'
-      : '💡 Cliquez sur un meuble pour le modifier';
+  // coachmark unique du plan (remplace l'ancien hint permanent)
+  if (view === 'plan' && !sessionStorage.getItem('coach-plan')) {
+    sessionStorage.setItem('coach-plan', '1');
+    setTimeout(() => showToast('✏️ Glissez appareils, fenêtres et portes · touchez un mur pour ajouter'), 1400);
   }
-  // en mobile, les vues Plan/Détail ont besoin de tout l'écran
+  // en mobile, la vue Plan a besoin de tout l'écran
   if (mobileMq.matches && view !== 'ensemble') sheet.set(0);
   const v = viewPositions()[view];
   if (v) ctx.flyTo(v.pos, v.tgt, 1.3);
@@ -177,15 +176,58 @@ canvas.addEventListener('pointerup', (e) => {
 function pickModule(x, y) {
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  const hits = raycaster.intersectObjects(current.editables, false);
+  const modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
+  const surfHit = findSurfaceHit();
   clearOutline();
-  if (!hits.length) { hidePopover(); return; }
-  const hit = hits[0].object;
-  const ud = hit.userData;
-  const comp = current.gapComps && current.gapComps[ud.gapKey];
-  if (!comp) { hidePopover(); return; }
-  drawOutline(hit);
-  showModuleEditor(x, y, ud, comp);
+  // le plus proche gagne : on n'édite pas un caisson à travers son comptoir
+  if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.01)) {
+    const ud = modHit.object.userData;
+    const comp = current.gapComps && current.gapComps[ud.gapKey];
+    if (comp) {
+      drawOutline(modHit.object);
+      showModuleEditor(x, y, ud, comp);
+      return;
+    }
+  }
+  if (surfHit) {
+    showSurfaceEditor(x, y, surfHit.kind);
+    return;
+  }
+  hidePopover();
+}
+
+// un objet est cliquable seulement si toute sa chaîne de parents est visible
+// (exclut les murs escamotés par la maison de poupée, les calques plan/élévation)
+function chainVisible(o) {
+  while (o) {
+    if (o.visible === false) return false;
+    o = o.parent;
+  }
+  return true;
+}
+
+function findSurfaceHit() {
+  if (!current || !current.matMap) return null;
+  const all = raycaster.intersectObjects(current.group.children, true);
+  for (const h of all) {
+    if (!h.object.isMesh || !chainVisible(h.object)) continue;
+    const info = current.matMap.get(h.object.material);
+    if (!info) continue;
+    const kind = { ...info };
+    // coordonnées « pièce » : c'est inner qui porte le centrage de la cuisine
+    const lp = (current.inner || current.group).worldToLocal(h.point.clone());
+    // une façade dans l'emprise de l'îlot édite la finition de l'îlot
+    if (kind.type === 'finish' && current.islandRect) {
+      const r = current.islandRect;
+      if (lp.x > r.x0 - 0.05 && lp.x < r.x1 + 0.05 && lp.z > r.z0 - 0.05 && lp.z < r.z1 + 0.05) {
+        kind.zone = 'island';
+      }
+    }
+    // le dosseret « assorti » partage le matériau du comptoir : on tranche par la hauteur
+    if (kind.type === 'counter' && lp.y > 0.97) kind.type = 'backsplash';
+    return { distance: h.distance, kind };
+  }
+  return null;
 }
 
 function drawOutline(mesh) {
@@ -238,7 +280,7 @@ document.getElementById('printBtn').addEventListener('click', async () => {
 });
 
 // REQ-914 : partage de la configuration par lien
-document.getElementById('shareBtn').addEventListener('click', async () => {
+async function copyShareLink() {
   const url = buildShareUrl();
   try {
     await navigator.clipboard.writeText(url);
@@ -246,16 +288,25 @@ document.getElementById('shareBtn').addEventListener('click', async () => {
   } catch {
     window.prompt('Copiez le lien de votre cuisine :', url);
   }
-});
+}
 
 // REQ-915 : photo HD de la vue actuelle
-document.getElementById('photoBtn').addEventListener('click', () => {
+function downloadPhoto() {
   const url = ctx.captureImage(2560, 1440, 'image/png');
   const a = document.createElement('a');
   a.href = url;
   a.download = 'ma-cuisine.png';
   a.click();
   showToast('Photo HD téléchargée 📸');
+}
+
+// un seul bouton « Partager » : photo HD et lien dans le même menu
+document.getElementById('shareMenuBtn').addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  showMenu(r.left + r.width / 2, r.bottom + 150, 'Partager ma cuisine', [
+    { ico: '🔗', label: 'Copier le lien de mon projet', onPick: copyShareLink },
+    { ico: '📸', label: 'Télécharger une photo HD', onPick: downloadPhoto },
+  ]);
 });
 
 // ————— démarrage —————
@@ -277,11 +328,9 @@ export async function initApp() {
   document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
   if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current, state, setState };
 
-  // mobile : la 3D d'abord — devis en pastille, panneau en bottom-sheet
-  if (mobileMq.matches) {
-    document.getElementById('quote').classList.add('collapsed');
-    setupMobileSheet();
-  }
+  // la 3D d'abord : le devis démarre en pastille (le détail est à un clic)
+  document.getElementById('quote').classList.add('collapsed');
+  if (mobileMq.matches) setupMobileSheet();
 
   const splash = document.getElementById('splash');
   document.getElementById('startBtn').addEventListener('click', () => {
@@ -291,10 +340,10 @@ export async function initApp() {
     const v = viewPositions().ensemble;
     ctx.camera.position.set(9, 6, 12);
     ctx.flyTo(v.pos, v.tgt, 2.4);
-    // coachmark tactile : le hint desktop n'existe pas en mobile
-    if (mobileMq.matches && !sessionStorage.getItem('coach-tap')) {
+    // coachmark unique : un seul concept à apprendre
+    if (!sessionStorage.getItem('coach-tap')) {
       sessionStorage.setItem('coach-tap', '1');
-      setTimeout(() => showToast('💡 Touchez un meuble pour le modifier'), 2800);
+      setTimeout(() => showToast('💡 Touchez ce que vous voulez changer — meubles, comptoir, murs…'), 2800);
     }
   });
 

@@ -72,9 +72,20 @@ function section(num, title, note = '', { collapsed = false } = {}) {
       });
       sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    updateSheetTitle();
   });
   sec.append = (...nodes) => body.append(...nodes);
   return sec;
+}
+
+// la poignée du bottom-sheet mobile affiche l'étape ouverte (« 1 · Ma cuisine »)
+function updateSheetTitle() {
+  const t = document.getElementById('sheetTitle');
+  if (!t) return;
+  const open = document.querySelector('#panelScroll .sec:not(.closed)');
+  t.textContent = open
+    ? `${parseInt(open.querySelector('.sec-num')?.textContent || '', 10) || ''} · ${open.querySelector('.sec-title')?.textContent || ''}`
+    : 'Personnaliser ma cuisine';
 }
 
 // ——— nuancier générique ———
@@ -321,8 +332,8 @@ export function buildPanel() {
   const root = document.getElementById('panelScroll');
   root.innerHTML = '';
 
-  // 1 · FORME
-  const s1 = section('01', 'La forme', 'Choisissez l’agencement — tout le reste s’adapte automatiquement.');
+  // 1 · MA CUISINE — forme, dimensions et îlot : une seule décision spatiale
+  const s1 = section('01', 'Ma cuisine', 'Choisissez l’agencement, glissez vos mesures — tout le reste s’adapte.');
   const shapes = el('<div class="shape-grid"></div>');
   const shapeDefs = [
     ['lineaire', 'Linéaire', '<rect x="6" y="6" width="36" height="9" rx="2"/>'],
@@ -360,19 +371,11 @@ export function buildPanel() {
     [['aucun', 'Rangement'], ['evier', 'Évier'], ['plaque', 'Cuisson']],
     (s) => s.islandFeature || 'aucun', (k) => setState({ islandFeature: k })
   ));
-  s1.append(islOpts);
-  updaters.push((s) => {
-    islRow.style.display = s.layout === 'galley' ? 'none' : '';
-    islOpts.style.display = s.island && s.layout !== 'galley' ? '' : 'none';
-  });
-  root.append(s1);
-
-  // 2 · DIMENSIONS
-  const s2 = section('02', 'Les dimensions', 'Mesurez vos murs, glissez — c’est tout.');
+  // dimensions au curseur — dans la même étape que la forme
   const slA = slider('Mur principal', 3.4, 6.4, (s) => s.dims.a, (v) => setState({ dims: { a: v } }));
   const slB = slider('Mur gauche', 2.7, 4.6, (s) => s.dims.b, (v) => setState({ dims: { b: v } }));
   const slC = slider('Mur droit', 2.6, 4.6, (s) => s.dims.c, (v) => setState({ dims: { c: v } }));
-  s2.append(slA, slB, slC);
+  s1.append(slA, slB, slC);
   updaters.push((s) => {
     slB.style.display = s.layout !== 'lineaire' ? '' : 'none';
     slC.style.display = s.layout === 'u' ? '' : 'none';
@@ -380,18 +383,17 @@ export function buildPanel() {
     // en couloir, b devient la profondeur de la pièce (REQ-1005)
     slB.querySelector('.lab b').textContent = s.layout === 'galley' ? 'Profondeur du corridor' : 'Mur gauche';
   });
-  // REQ-708 : hauteur de plafond
-  s2.append(el('<div class="swatch-label"><span>Hauteur de plafond</span></div>'));
-  s2.append(segmented(
-    [['8', '8 pi'], ['9', '9 pi'], ['10', '10 pi']],
-    (s) => String(s.ceiling || 9),
-    (k) => setState({ ceiling: +k })
-  ));
-  root.append(s2);
+  s1.append(islRow);
+  s1.append(islOpts);
+  updaters.push((s) => {
+    islRow.style.display = s.layout === 'galley' ? 'none' : '';
+    islOpts.style.display = s.island && s.layout !== 'galley' ? '' : 'none';
+  });
+  root.append(s1);
 
-  // 3 · STYLE — promu avant les réglages de pièce : c'est l'étape émotionnelle
+  // 2 · STYLE — promu avant les réglages de pièce : c'est l'étape émotionnelle
   // du parcours Express (la promesse « forme → matières → devis » du hero)
-  const s3 = section('03', 'Le style', 'Une ambiance complète en un clic. Personnalisez ensuite chaque détail.');
+  const s3 = section('02', 'Le style', 'Une ambiance complète en un clic. Personnalisez ensuite chaque détail.');
   const presets = el('<div class="preset-grid"></div>');
   for (const [key, p] of Object.entries(PRESETS)) {
     const card = el(`<button class="preset-card" data-k="${key}">
@@ -413,16 +415,23 @@ export function buildPanel() {
   s3.append(presets);
   root.append(s3);
 
-  // 4 · VOTRE PIÈCE (contraintes réelles) — replié : réglage avancé
-  const s2b = section('04', 'Votre pièce', 'Placez vos appareils, fenêtres et portes — la cuisine se replanifie autour.', { collapsed: true });
+  // 3 · VOTRE PIÈCE (contraintes réelles) — replié : réglage avancé
+  const s2b = section('03', 'Votre pièce', 'Placez vos appareils, fenêtres et portes — la cuisine se replanifie autour.', { collapsed: true });
   s2b.append(fixtureControl('water', 'Position de l’évier', 'Idéalement sur votre plomberie existante.'));
   s2b.append(fixtureControl('stove', 'Position de la cuisinière', 'La hotte suit. Idéalement sur votre prise 240 V existante.'));
   s2b.append(openingsEditor('fenetre', 'Fenêtres', 'Ajouter une fenêtre', 0.6, 2.4, 1.25, 3));
   s2b.append(openingsEditor('porte', 'Portes et passages', 'Ajouter une porte', 0.7, 1.8, 0.85, 2));
+  // REQ-708 : hauteur de plafond — on ne la règle qu'une fois, elle vit ici
+  s2b.append(el('<div class="swatch-label"><span>Hauteur de plafond</span></div>'));
+  s2b.append(segmented(
+    [['8', '8 pi'], ['9', '9 pi'], ['10', '10 pi']],
+    (s) => String(s.ceiling || 9),
+    (k) => setState({ ceiling: +k })
+  ));
   root.append(s2b);
 
-  // 5 · ARMOIRES — replié : personnalisation fine
-  const s4 = section('05', 'Les armoires', '', { collapsed: true });
+  // 4 · ARMOIRES — replié : personnalisation fine
+  const s4 = section('04', 'Les armoires', '', { collapsed: true });
   s4.append(segmented([['plate', 'Façade plane'], ['shaker', 'Façade shaker']], (s) => s.doorStyle, (k) => setState({ doorStyle: k, preset: null })));
   // REQ-1007 : hauteur des armoires murales (30/36 alignées aux colonnes, 42 au plafond 8 pi)
   s4.append(el('<div class="swatch-label"><span>Hauteur des armoires murales</span></div>'));
@@ -442,8 +451,8 @@ export function buildPanel() {
   s4.append(swatchGroup('Poignées', HANDLES, (s) => s.handle, (k) => setState({ handle: k, preset: null }), { columns: 4 }));
   root.append(s4);
 
-  // 6 · SURFACES — replié : personnalisation fine
-  const s5 = section('06', 'Les surfaces', '', { collapsed: true });
+  // 5 · SURFACES — replié : personnalisation fine
+  const s5 = section('05', 'Les surfaces', '', { collapsed: true });
   s5.append(swatchGroup('Comptoir', COUNTERS, (s) => s.counter, (k) => setState({ counter: k, preset: null }), { priceKey: 'price' }));
   // REQ-912 : profil de chant (l'adouci est inclus, le bullnose se façonne au pi lin)
   s5.append(el('<div class="swatch-label"><span>Profil de chant</span></div>'));
@@ -456,9 +465,9 @@ export function buildPanel() {
   s5.append(swatchGroup('Murs', WALLS, (s) => s.wall, (k) => setState({ wall: k, preset: null })));
   root.append(s5);
 
-  // 7 · ÉVIER ET ÉLECTROMÉNAGERS — replié : personnalisation fine
+  // 6 · ÉVIER ET ÉLECTROMÉNAGERS — replié : personnalisation fine
   const selling = getBusiness().sellAppliances;
-  const s6 = section('07', 'L’évier et les électros',
+  const s6 = section('06', 'L’évier et les électros',
     selling ? '' : 'Pour planifier votre aménagement — les électros ne sont pas inclus au devis.',
     { collapsed: true });
   s6.append(segmented(
@@ -512,7 +521,17 @@ export function buildPanel() {
   }
   root.append(s6);
 
+  // mobile : une seule étape ouverte à la fois, dès le départ
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    root.querySelectorAll('.sec').forEach((s7, i) => {
+      if (i > 0) {
+        s7.classList.add('closed');
+        s7.querySelector('.sec-head')?.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
   refresh();
+  updateSheetTitle();
   subscribe(() => refresh());
 }
 
@@ -728,6 +747,107 @@ export function hidePopover() {
   document.getElementById('popover').hidden = true;
 }
 
+// ————————————— éditeur de surface (tap-to-edit universel) —————————————
+// On touche le comptoir, le dosseret, le plancher, un mur, une façade, une
+// poignée ou l'évier — le nuancier correspondant s'ouvre sur place. Le popover
+// reste ouvert pour essayer plusieurs matières d'affilée.
+const SURFACE_DEFS = {
+  counter: () => ({ title: 'Comptoir', entries: COUNTERS, get: () => state.counter, set: (k) => setState({ counter: k, preset: null }) }),
+  backsplash: () => ({ title: 'Dosseret', entries: BACKSPLASHES, get: () => state.backsplash, set: (k) => setState({ backsplash: k, preset: null }) }),
+  floor: () => ({ title: 'Plancher', entries: FLOORS, get: () => state.floor, set: (k) => setState({ floor: k, preset: null }) }),
+  wall: () => ({ title: 'Couleur des murs', entries: WALLS, get: () => state.wall, set: (k) => setState({ wall: k, preset: null }) }),
+  handle: () => ({ title: 'Poignées', entries: HANDLES, get: () => state.handle, set: (k) => setState({ handle: k, preset: null }) }),
+  // finition uniforme (hauts qui suivent) : « Armoires · finition » tout court ;
+  // en two-tone le matériau des hauts est distinct et mène à finish-upper
+  'finish-base': () => ({ title: state.upperFinish ? 'Armoires · finition des bas' : 'Armoires · finition', entries: CABINET_FINISHES, get: () => state.cabinetFinish, set: (k) => setState({ cabinetFinish: k, preset: null }) }),
+  'finish-upper': () => ({ title: 'Armoires du haut · finition', entries: CABINET_FINISHES, get: () => state.upperFinish || state.cabinetFinish, set: (k) => setState({ upperFinish: k === state.cabinetFinish ? null : k, preset: null }) }),
+  'finish-island': () => ({ title: 'Îlot · finition', entries: CABINET_FINISHES, get: () => state.islandFinish || state.cabinetFinish, set: (k) => setState({ islandFinish: k, preset: null }) }),
+};
+
+export function showSurfaceEditor(x, y, kind) {
+  const pop = document.getElementById('popover');
+  const opts = document.getElementById('popoverOpts');
+  opts.innerHTML = '';
+
+  // les électros ouvrent leur choix de fini (inox / acier noir)
+  if (kind.type === 'appliance') {
+    document.getElementById('popoverTitle').textContent = 'Électroménagers';
+    const chips = el('<div class="pop-chips"></div>');
+    for (const [k, d] of Object.entries(APPLIANCE_FINISHES)) {
+      const c = el(`<button class="chip ${state.applianceFinish === k ? 'active' : ''}">${d.label}</button>`);
+      c.addEventListener('click', () => {
+        setState({ applianceFinish: k });
+        chips.querySelectorAll('.chip').forEach((b) => b.classList.toggle('active', b === c));
+      });
+      chips.append(c);
+    }
+    opts.append(chips);
+    placePopover(pop, x, y);
+    return;
+  }
+
+  // l'évier ouvre ses trois choix (style, cuves, robinet) plutôt qu'un nuancier
+  if (kind.type === 'sink') {
+    document.getElementById('popoverTitle').textContent = 'Évier et robinet';
+    const rows = [
+      ['Style', [['encastre', 'Encastré'], ['farmhouse', 'Farmhouse']], () => state.sinkStyle || 'encastre', (k) => setState({ sinkStyle: k })],
+      ['Cuves', [['simple', 'Simple'], ['double', 'Double']], () => state.sinkBowls || 'simple', (k) => setState({ sinkBowls: k })],
+      ['Robinet', [['colcygne', 'Col de cygne'], ['pont', 'Pont rétro'], ['pro', 'Professionnel']], () => state.faucetStyle || 'colcygne', (k) => setState({ faucetStyle: k })],
+    ];
+    for (const [label, choices, get, set] of rows) {
+      opts.append(el(`<div class="pop-label">${label}</div>`));
+      const chips = el('<div class="pop-chips"></div>');
+      for (const [k, lab] of choices) {
+        const c = el(`<button class="chip ${get() === k ? 'active' : ''}">${lab}</button>`);
+        c.addEventListener('click', () => {
+          set(k);
+          chips.querySelectorAll('.chip').forEach((b) => b.classList.toggle('active', b === c));
+        });
+        chips.append(c);
+      }
+      opts.append(chips);
+    }
+    placePopover(pop, x, y);
+    return;
+  }
+
+  const defFn = SURFACE_DEFS[kind.type === 'finish' ? `finish-${kind.zone || 'base'}` : kind.type];
+  if (!defFn) return;
+  const def = defFn();
+  document.getElementById('popoverTitle').textContent = def.title;
+  const name = el('<div class="pop-label" style="padding-top:0"></div>');
+  const grid = el('<div class="swatches" style="grid-template-columns: repeat(5, 1fr); padding: 2px"></div>');
+  const sync = () => {
+    const cur = def.get();
+    name.textContent = def.entries[cur] ? def.entries[cur].label : '';
+    grid.querySelectorAll('.swatch').forEach((b) => b.classList.toggle('active', b.dataset.k === cur));
+  };
+  for (const [k, d] of Object.entries(def.entries)) {
+    const b = el(`<button class="swatch" data-k="${k}" style="${swatchCSS(d.swatch)}">
+      <span class="swatch-tip">${d.label}</span>
+    </button>`);
+    b.addEventListener('click', () => { def.set(k); sync(); });
+    grid.append(b);
+  }
+  opts.append(name, grid);
+  // bonus comptoir : le profil de chant vit au même endroit
+  if (kind.type === 'counter') {
+    opts.append(el('<div class="pop-label">Profil de chant</div>'));
+    const chips = el('<div class="pop-chips"></div>');
+    for (const [k, lab] of [['vif', 'Vif'], ['adouci', 'Adouci'], ['bullnose', 'Bullnose']]) {
+      const c = el(`<button class="chip ${(state.counterEdge || 'adouci') === k ? 'active' : ''}">${lab}</button>`);
+      c.addEventListener('click', () => {
+        setState({ counterEdge: k });
+        chips.querySelectorAll('.chip').forEach((b) => b.classList.toggle('active', b === c));
+      });
+      chips.append(c);
+    }
+    opts.append(chips);
+  }
+  sync();
+  placePopover(pop, x, y);
+}
+
 // ————————————— recommandations NKBA (validateur doux) —————————————
 export function renderNkba(warnings) {
   let chip = document.getElementById('nkbaChip');
@@ -744,8 +864,10 @@ export function renderNkba(warnings) {
   }
   chip.hidden = warnings.length === 0;
   if (!warnings.length) return;
-  chip.querySelector('.nkba-head').textContent =
-    `⚠ ${warnings.length} recommandation${warnings.length > 1 ? 's' : ''} d'ergonomie`;
+  // badge discret : le compte suffit, le détail s'ouvre au tap
+  const head = chip.querySelector('.nkba-head');
+  head.textContent = `⚠ ${warnings.length}`;
+  head.title = `${warnings.length} recommandation${warnings.length > 1 ? 's' : ''} d'ergonomie`;
   chip.querySelector('.nkba-list').innerHTML = warnings
     .map((w) => `<div class="nkba-item"><b>${w.id}</b> ${w.msg}</div>`)
     .join('');

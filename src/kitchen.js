@@ -937,6 +937,23 @@ export function buildKitchen(state) {
   const islandMats = { ...mats, finish: islandFinish, zone: 'island' };
   const matsUpper = { ...mats, finish: upFinish, zone: 'upper' };
 
+  // Tap-to-edit universel : la surface touchée s'identifie par son matériau.
+  // Ordre des set : les instances partagées (même finition → même matériau en
+  // cache) retombent sur la dernière entrée écrite — 'base', le choix le plus
+  // attendu ; l'îlot se distingue ensuite par sa position (islandRect).
+  const matMap = new Map();
+  matMap.set(upFinish, { type: 'finish', zone: 'upper' });
+  matMap.set(islandFinish, { type: 'finish', zone: 'island' });
+  matMap.set(finish, { type: 'finish', zone: 'base' });
+  matMap.set(backsplashMat, { type: 'backsplash' });
+  matMap.set(counterMat, { type: 'counter' });
+  matMap.set(floorMat, { type: 'floor' });
+  matMap.set(wallMat, { type: 'wall' });
+  matMap.set(handleMat, { type: 'handle' });
+  matMap.set(S.sinkSteel, { type: 'sink' });
+  matMap.set(S.fireclay, { type: 'sink' });
+  matMap.set(applianceMat, { type: 'appliance' });
+
   // ——— murs porteurs de caissons selon la forme ———
   const cabWalls = galley ? ['back', 'front']
     : state.layout === 'u' ? ['back', 'left', 'right']
@@ -2402,7 +2419,7 @@ export function buildKitchen(state) {
     cabWalls,
   };
 
-  return { group: root, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps };
+  return { group: root, inner, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps, matMap, islandRect };
 }
 
 export function disposeKitchen(group) {

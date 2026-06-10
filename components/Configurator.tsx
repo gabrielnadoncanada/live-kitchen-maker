@@ -84,15 +84,10 @@ export default function Configurator() {
               Vue 3D
             </button>
             <button data-view="plan">Plan</button>
-            <button data-view="detail">Détail</button>
           </nav>
           <div className="topbar-right">
-            <span className="hint-chip">💡 Cliquez sur un meuble pour le modifier</span>
-            <button id="photoBtn" className="top-action" title="Photo HD de ma cuisine" aria-label="Photo HD">
-              📸
-            </button>
-            <button id="shareBtn" className="top-action" title="Partager ma cuisine (lien)" aria-label="Partager">
-              🔗
+            <button id="shareMenuBtn" className="top-action" title="Partager ma cuisine" aria-label="Partager">
+              📤
             </button>
           </div>
         </header>
@@ -101,6 +96,7 @@ export default function Configurator() {
         <aside className="panel" id="panel">
           <button className="sheet-grip" id="sheetGrip" aria-label="Réduire ou agrandir le panneau">
             <i></i>
+            <span id="sheetTitle"></span>
           </button>
           <div className="panel-scroll" id="panelScroll"></div>
         </aside>
