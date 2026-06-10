@@ -25,6 +25,7 @@ const TALL_H = 2.25;      // haut des colonnes (et des murales alignées)
 let WALL_BOT = TALL_H - 0.762;
 let WALL_CAB_H = 0.762;
 let WALL_FAMILY = 'wall'; // famille SKU selon la hauteur (wall | wall36 | wall42)
+let SINK_FARM = false;    // REQ-908 : évier farmhouse (tablier apparent) — muté par buildKitchen
 const HOOD_Y = 1.5;       // bas de la hotte murale (60 cm au-dessus de la plaque) — fixe
 const WIN_Y0 = 1.52, WIN_Y1 = 2.2; // la fenêtre ne dépend pas de la hauteur des murales
 const WALL_CAB_D = 0.305; // 12 po — profondeur murale catalogue (REQ-702)
@@ -64,6 +65,12 @@ function fixedMats() {
   shared.shadeBlack = new THREE.MeshStandardMaterial({ color: '#1c1c1e', roughness: 0.6, metalness: 0.4 });
   shared.brassTrim = new THREE.MeshPhysicalMaterial({ color: '#c9a35f', metalness: 1, roughness: 0.3 });
   shared.boardWood = new THREE.MeshStandardMaterial({ color: '#9c7448', roughness: 0.7 });
+  // REQ-908 / REQ-913 : fireclay (évier farmhouse), lin (store, torchon), tapis
+  shared.fireclay = new THREE.MeshPhysicalMaterial({ color: '#f3efe6', roughness: 0.18, clearcoat: 0.9, clearcoatRoughness: 0.15 });
+  shared.linen = new THREE.MeshStandardMaterial({ color: '#ece5d3', roughness: 0.92 });
+  shared.terracotta = new THREE.MeshStandardMaterial({ color: '#a8623c', roughness: 0.8 });
+  shared.rugBase = new THREE.MeshStandardMaterial({ color: '#c0b095', roughness: 0.96 });
+  shared.rugBorder = new THREE.MeshStandardMaterial({ color: '#8e7c5e', roughness: 0.96 });
   shared.done = true;
   return shared;
 }
@@ -140,7 +147,8 @@ function makeHandle(kind, mat, vertical = false, len = 0.17) {
 }
 
 // ——— caisson bas ———
-function buildBase(w, type, mats, manifest, widthIn = null) {
+// hinge (REQ-910) : 'gauche' | 'droite' — sens d'ouverture des portes simples
+function buildBase(w, type, mats, manifest, widthIn = null, hinge = null) {
   const { finish, handleKind, handleMat, doorStyle, applianceMat, zone = 'base' } = mats;
   const g = new THREE.Group();
   const S = fixedMats();
@@ -160,12 +168,27 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     g.add(box(w, t, BASE_D - 0.02, finish, w / 2, PLINTH + CARCASS_H - t / 2, BASE_D / 2));
     g.add(box(w - t * 2, t, BASE_D - 0.05, S.interior, w / 2, PLINTH + CARCASS_H * 0.52, BASE_D / 2));
     g.add(box(w - t * 2, CARCASS_H - t * 2, 0.012, S.interior, w / 2, PLINTH + CARCASS_H / 2, 0.03));
-    for (let i = 0; i < 3; i++) g.add(cyl(0.055 - i * 0.004, 0.022, S.ceramic, w / 2, PLINTH + CARCASS_H * 0.52 + 0.02 + i * 0.022, BASE_D / 2));
+    // REQ-913 : vaisselle dans la niche — pile d'assiettes, bols et tasses
+    const shelfY = PLINTH + CARCASS_H * 0.52 + 0.02;
+    for (let i = 0; i < 3; i++) g.add(cyl(0.055 - i * 0.004, 0.022, S.ceramic, w / 2, shelfY + i * 0.022, BASE_D / 2));
+    if (w > 0.42) {
+      for (const [mx, mz] of [[w / 2 - 0.13, BASE_D / 2 - 0.04], [w / 2 - 0.16, BASE_D / 2 + 0.06]]) {
+        g.add(cyl(0.032, 0.062, S.ceramic, mx, shelfY + 0.031, mz));
+      }
+      const botY = PLINTH + 0.018;
+      g.add(cyl(0.06, 0.045, S.ceramic, w / 2 + 0.1, botY + 0.022, BASE_D / 2));
+      g.add(cyl(0.05, 0.04, S.ceramic, w / 2 + 0.1, botY + 0.063, BASE_D / 2));
+      g.add(box(0.16, 0.05, 0.13, S.linen, w / 2 - 0.12, botY + 0.025, BASE_D / 2));
+      g.add(box(0.155, 0.018, 0.125, S.terracotta, w / 2 - 0.12, botY + 0.058, BASE_D / 2));
+    }
     manifest.add('base-ouvert');
     return g;
   }
 
-  g.add(box(w - 0.004, CARCASS_H, BASE_D - DOOR_T, finish, w / 2, PLINTH + CARCASS_H / 2, (BASE_D - DOOR_T) / 2));
+  // le caisson d'évier est ouvert en haut : la cuve y descend (son dessus ne doit
+  // jamais apparaître à travers l'ouverture de la cuve)
+  const carcH = type === 'evier' ? CARCASS_H - 0.26 : CARCASS_H;
+  g.add(box(w - 0.004, carcH, BASE_D - DOOR_T, finish, w / 2, PLINTH + carcH / 2, (BASE_D - DOOR_T) / 2));
 
   const frontY0 = PLINTH + 0.005, frontH = CARCASS_H - 0.01;
   const zF = BASE_D - DOOR_T / 2;
@@ -277,23 +300,35 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     return g;
   }
 
+  // REQ-908 : sous un évier farmhouse, le tablier descend devant le caisson —
+  // les portes raccourcissent d'autant (l'îlot reste encastré)
+  const farmEv = type === 'evier' && SINK_FARM && zone !== 'island';
+  const fH = farmEv ? frontH - 0.25 : frontH;
   const two = w > 0.58;
   const dw = two ? (w - GAP * 3) / 2 : w - GAP * 2;
   const xs = two ? [GAP + dw / 2, GAP * 2 + dw * 1.5] : [w / 2];
   xs.forEach((x, i) => {
-    const f = makeFront(dw, frontH - GAP, finish, doorStyle);
-    f.position.set(x, frontY0 + frontH / 2, zF);
+    const f = makeFront(dw, fH - GAP, finish, doorStyle);
+    f.position.set(x, frontY0 + fH / 2, zF);
     g.add(f);
+    // REQ-910 : porte simple — la poignée se place à l'opposé des charnières
+    const side = two ? (i === 0 ? 1 : -1) : hinge === 'droite' ? -1 : 1;
     const h = makeHandle(handleKind, handleMat, true, 0.17);
     if (h) {
-      const side = two ? (i === 0 ? 1 : -1) : 1;
-      h.position.set(x + side * (dw / 2 - 0.045), frontY0 + frontH - 0.16, zF + DOOR_T / 2);
+      h.position.set(x + side * (dw / 2 - 0.045), frontY0 + fH - 0.16, zF + DOOR_T / 2);
       g.add(h);
+    }
+    if (!two) {
+      // charnières apparentes côté pivot (information de commande visible)
+      for (const fy of [frontY0 + fH * 0.22, frontY0 + fH * 0.78]) {
+        g.add(box(0.014, 0.055, 0.01, S.darkMetal, x - side * (dw / 2 - 0.006), fy, zF + DOOR_T / 2 + 0.002));
+      }
     }
     manifest.handles++;
   });
   if (type === 'evier') {
-    manifest.add('base-evier');
+    const fs = farmEv ? findSku('farmhouseSinkBase', widthIn ?? Math.round(w / IN)) : null;
+    if (!manifest.addSku(fs, `Caisson évier farmhouse ${fs?.widthIn} po`, { zone })) manifest.add('base-evier');
   } else {
     const s = widthIn != null ? findSku('baseStandard', widthIn) : null;
     if (!manifest.addSku(s, `Caisson bas ${s?.widthIn} po`, { zone })) manifest.add('base-portes');
@@ -517,35 +552,100 @@ function buildHood(steel) {
 }
 
 // ——— évier + robinet, centré sur x=0, mur en z=0 ———
-function buildSink() {
+// REQ-908 : farmhouse (tablier fireclay apparent), cuve simple/double, 3 robinets
+function buildSink({ farmhouse = false, double = false, faucet = 'colcygne' } = {}) {
   const S = fixedMats();
   const g = new THREE.Group();
-  const cx = 0, cz = 0.32;
-  const W = 0.56, D = 0.44, depth = 0.17, t = 0.012;
+  const farm = farmhouse;
+  const cuveMat = farm ? S.fireclay : S.sinkSteel;
+  const cx = 0;
+  const W = farm ? 0.68 : 0.56, D = farm ? 0.5 : 0.44;
+  const cz = farm ? 0.1 + D / 2 : 0.32;
+  const depth = 0.17, t = farm ? 0.02 : 0.012;
   const y0 = COUNTER_TOP;
-  g.add(box(W + 0.05, 0.008, t, S.sinkSteel, cx, y0 + 0.004, cz - D / 2 - t / 2));
-  g.add(box(W + 0.05, 0.008, t, S.sinkSteel, cx, y0 + 0.004, cz + D / 2 + t / 2));
-  g.add(box(t, 0.008, D + 0.026, S.sinkSteel, cx - W / 2 - t / 2, y0 + 0.004, cz));
-  g.add(box(t, 0.008, D + 0.026, S.sinkSteel, cx + W / 2 + t / 2, y0 + 0.004, cz));
-  const wall = (w, h, d, x, y, z) => box(w, h, d, S.sinkSteel, x, y, z);
+  // rebord périphérique (inox mince ou fireclay épais)
+  const rim = farm ? 0.03 : 0.012, rimH = farm ? 0.014 : 0.008;
+  g.add(box(W + rim * 2 + 0.026, rimH, rim, cuveMat, cx, y0 + rimH / 2, cz - D / 2 - rim / 2));
+  g.add(box(W + rim * 2 + 0.026, rimH, rim, cuveMat, cx, y0 + rimH / 2, cz + D / 2 + rim / 2));
+  g.add(box(rim, rimH, D + 0.026, cuveMat, cx - W / 2 - rim / 2, y0 + rimH / 2, cz));
+  g.add(box(rim, rimH, D + 0.026, cuveMat, cx + W / 2 + rim / 2, y0 + rimH / 2, cz));
+  const wall = (w, h, d, x, y, z) => box(w, h, d, cuveMat, x, y, z);
   g.add(wall(W, depth, t, cx, y0 - depth / 2, cz - D / 2 + t / 2));
   g.add(wall(W, depth, t, cx, y0 - depth / 2, cz + D / 2 - t / 2));
   g.add(wall(t, depth, D, cx - W / 2 + t / 2, y0 - depth / 2, cz));
   g.add(wall(t, depth, D, cx + W / 2 - t / 2, y0 - depth / 2, cz));
   g.add(wall(W, t, D, cx, y0 - depth + t / 2, cz));
-  g.add(cyl(0.024, 0.006, S.darkMetal, cx, y0 - depth + t + 0.003, cz));
+  // cuve double : séparation centrale + un drain par cuve
+  if (double) {
+    g.add(wall(t, depth, D - t, cx, y0 - depth / 2, cz));
+    g.add(cyl(0.022, 0.006, S.darkMetal, cx - W / 4, y0 - depth + t + 0.003, cz));
+    g.add(cyl(0.022, 0.006, S.darkMetal, cx + W / 4, y0 - depth + t + 0.003, cz));
+  } else {
+    g.add(cyl(0.024, 0.006, S.darkMetal, cx, y0 - depth + t + 0.003, cz));
+  }
+  // tablier farmhouse : panneau fireclay proud des portes, du comptoir à mi-caisson
+  if (farm) {
+    const apH = 0.26;
+    g.add(box(W + 0.07, apH, 0.045, S.fireclay, cx, y0 - apH / 2 + 0.012, BASE_D + 0.018));
+    g.add(box(W + 0.07, 0.018, 0.06, S.fireclay, cx, y0 + 0.009, BASE_D + 0.012));
+  }
+  // ——— robinet (REQ-908 : col de cygne, pont rétro ou professionnel) ———
   const fx = cx, fz = cz - D / 2 - 0.07;
-  g.add(cyl(0.022, 0.012, S.brassTrim, fx, y0 + 0.006, fz));
-  g.add(cyl(0.013, 0.3, S.brassTrim, fx, y0 + 0.16, fz));
-  const arc = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 12, 28, Math.PI), S.brassTrim);
-  arc.position.set(fx, y0 + 0.31, fz + 0.085);
-  arc.rotation.y = Math.PI / 2;
-  arc.castShadow = true;
-  g.add(arc);
-  g.add(cyl(0.011, 0.07, S.brassTrim, fx, y0 + 0.28, fz + 0.17));
-  const lever = cyl(0.008, 0.09, S.brassTrim, fx + 0.05, y0 + 0.07, fz);
-  lever.rotation.z = -0.7;
-  g.add(lever);
+  const fm = faucet === 'pro' ? S.sinkSteel : S.brassTrim;
+  if (faucet === 'pont') {
+    // pont rétro : deux colonnettes, barre transversale, bec arqué, manettes croix
+    for (const s of [-1, 1]) {
+      g.add(cyl(0.018, 0.012, fm, fx + s * 0.09, y0 + 0.006, fz));
+      g.add(cyl(0.011, 0.13, fm, fx + s * 0.09, y0 + 0.07, fz));
+      const cross = cyl(0.006, 0.06, fm, fx + s * 0.09, y0 + 0.145, fz);
+      cross.rotation.x = Math.PI / 2;
+      g.add(cross);
+      const cross2 = cyl(0.006, 0.06, fm, fx + s * 0.09, y0 + 0.145, fz);
+      cross2.rotation.z = Math.PI / 2;
+      g.add(cross2);
+    }
+    const bridge = cyl(0.011, 0.18, fm, fx, y0 + 0.125, fz);
+    bridge.rotation.z = Math.PI / 2;
+    g.add(bridge);
+    g.add(cyl(0.011, 0.14, fm, fx, y0 + 0.19, fz));
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.01, 12, 28, Math.PI), fm);
+    arc.position.set(fx, y0 + 0.26, fz + 0.07);
+    arc.rotation.y = Math.PI / 2;
+    arc.castShadow = true;
+    g.add(arc);
+    g.add(cyl(0.009, 0.05, fm, fx, y0 + 0.235, fz + 0.14));
+  } else if (faucet === 'pro') {
+    // professionnel : colonne haute + ressort hélicoïdal + douchette
+    g.add(cyl(0.024, 0.012, fm, fx, y0 + 0.006, fz));
+    g.add(cyl(0.012, 0.42, fm, fx, y0 + 0.22, fz));
+    for (let i = 0; i < 7; i++) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0045, 8, 24), fm);
+      coil.position.set(fx, y0 + 0.2 + i * 0.026, fz + 0.012);
+      coil.rotation.x = Math.PI / 2 - 0.18;
+      coil.castShadow = true;
+      g.add(coil);
+    }
+    const neck = cyl(0.008, 0.13, fm, fx, y0 + 0.37, fz + 0.075);
+    neck.rotation.x = 0.85;
+    g.add(neck);
+    g.add(cyl(0.016, 0.07, S.shadeBlack, fx, y0 + 0.31, fz + 0.125));
+    const lever = cyl(0.007, 0.08, fm, fx + 0.045, y0 + 0.06, fz);
+    lever.rotation.z = -0.7;
+    g.add(lever);
+  } else {
+    // col de cygne (défaut)
+    g.add(cyl(0.022, 0.012, fm, fx, y0 + 0.006, fz));
+    g.add(cyl(0.013, 0.3, fm, fx, y0 + 0.16, fz));
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 12, 28, Math.PI), fm);
+    arc.position.set(fx, y0 + 0.31, fz + 0.085);
+    arc.rotation.y = Math.PI / 2;
+    arc.castShadow = true;
+    g.add(arc);
+    g.add(cyl(0.011, 0.07, fm, fx, y0 + 0.28, fz + 0.17));
+    const lever = cyl(0.008, 0.09, fm, fx + 0.05, y0 + 0.07, fz);
+    lever.rotation.z = -0.7;
+    g.add(lever);
+  }
   return g;
 }
 
@@ -565,6 +665,14 @@ function buildWindow(winW) {
   const sky = box(winW, y1 - y0, 0.012, S.skyGlow, 0, (y0 + y1) / 2, 0.007);
   sky.castShadow = false;
   wg.add(sky);
+  // REQ-913 : store enrouleur en lin, descendu sur le tiers haut de la vitre
+  const roll = cyl(0.03, winW + 0.04, S.linen, 0, y1 + 0.015, 0.085);
+  roll.rotation.z = Math.PI / 2;
+  wg.add(roll);
+  wg.add(box(winW - 0.015, 0.24, 0.008, S.linen, 0, y1 - 0.105, 0.085));
+  const slat = cyl(0.009, winW - 0.015, S.boardWood, 0, y1 - 0.225, 0.085);
+  slat.rotation.z = Math.PI / 2;
+  wg.add(slat);
   return wg;
 }
 
@@ -649,6 +757,56 @@ function decor(S) {
       ring.castShadow = true;
       g.add(ring);
       g.position.set(x, 0, z);
+      return g;
+    },
+    // REQ-913 : cafetière espresso posée sur le comptoir
+    coffee(x, y, z, rotY = 0) {
+      const g = new THREE.Group();
+      g.add(box(0.2, 0.045, 0.21, S.shadeBlack, 0, 0.022, 0));
+      g.add(box(0.17, 0.2, 0.1, S.darkMetal, 0, 0.15, -0.05));
+      g.add(box(0.2, 0.07, 0.21, S.darkMetal, 0, 0.285, 0));
+      g.add(cyl(0.012, 0.05, S.sinkSteel, 0, 0.1, 0.015));
+      g.add(cyl(0.045, 0.075, S.blackGlass, 0, 0.085, 0.055));
+      g.add(cyl(0.02, 0.012, S.sinkSteel, -0.07, 0.255, 0.06));
+      g.add(cyl(0.02, 0.012, S.sinkSteel, 0.07, 0.255, 0.06));
+      g.position.set(x, y, z);
+      g.rotation.y = rotY;
+      return g;
+    },
+    // REQ-913 : torchon suspendu à la barre du four (ou plié sur le comptoir)
+    towel(hung = true) {
+      const g = new THREE.Group();
+      if (hung) {
+        g.add(box(0.17, 0.2, 0.012, S.linen, 0, -0.1, 0.006));
+        g.add(box(0.17, 0.018, 0.05, S.linen, 0, 0.004, -0.012));
+        g.add(box(0.17, 0.1, 0.011, S.linen, 0, -0.05, -0.034));
+        g.add(box(0.172, 0.028, 0.013, S.terracotta, 0, -0.165, 0.0062));
+      } else {
+        g.add(box(0.21, 0.016, 0.15, S.linen, 0, 0.008, 0));
+        g.add(box(0.21, 0.012, 0.05, S.terracotta, 0, 0.022, 0.03));
+      }
+      return g;
+    },
+    // REQ-913 : tapis de cuisine tissé devant l'évier
+    rug(x, z, w = 0.95, d = 0.6, rotY = 0) {
+      const g = new THREE.Group();
+      const base = box(w, 0.012, d, S.rugBase, 0, 0.006, 0);
+      base.castShadow = false;
+      g.add(base);
+      const bw = 0.05;
+      for (const [sw, sd, sx, sz] of [
+        [w, bw, 0, -d / 2 + bw / 2], [w, bw, 0, d / 2 - bw / 2],
+        [bw, d - bw * 2, -w / 2 + bw / 2, 0], [bw, d - bw * 2, w / 2 - bw / 2, 0],
+      ]) {
+        const b = box(sw, 0.013, sd, S.rugBorder, sx, 0.0065, sz);
+        b.castShadow = false;
+        g.add(b);
+      }
+      const st = box(w - bw * 4, 0.0125, 0.04, S.rugBorder, 0, 0.0063, 0);
+      st.castShadow = false;
+      g.add(st);
+      g.position.set(x, 0, z);
+      g.rotation.y = rotY;
       return g;
     },
     pendant(x, y, z) {
@@ -741,6 +899,13 @@ export function buildKitchen(state) {
   WALL_CAB_H = { 30: 0.762, 36: 0.914, 42: 1.067 }[wch];
   WALL_BOT = wch === 42 ? 1.37 : TALL_H - WALL_CAB_H;
   WALL_FAMILY = wch === 30 ? 'wall' : `wall${wch}`;
+  // REQ-908 : style d'évier et robinet
+  SINK_FARM = state.sinkStyle === 'farmhouse';
+  const sinkOpts = {
+    farmhouse: SINK_FARM,
+    double: state.sinkBowls === 'double',
+    faucet: state.faucetStyle || 'colcygne',
+  };
   const S = fixedMats();
   const manifest = new Manifest();
   const root = new THREE.Group();
@@ -1133,7 +1298,11 @@ export function buildKitchen(state) {
       const sum = plan.widths.reduce((s, w) => s + w, 0);
       const rest = totalIn - sum;
       if (rest > -0.05 && rest < 9) {
-        const out = plan.widths.map((wi, i) => ({ w: wi * IN, widthIn: wi, filler: false, planType: plan.types?.[i] || null }));
+        const out = plan.widths.map((wi, i) => ({
+          w: wi * IN, widthIn: wi, filler: false,
+          planType: plan.types?.[i] || null,
+          planHinge: plan.hinges?.[i] || null, // REQ-910
+        }));
         if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
         return out;
       }
@@ -1143,6 +1312,7 @@ export function buildKitchen(state) {
   const placedIntervals = { back: [], left: [], right: [], front: [] }; // REQ-803 : filet AABB
   let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
   let crownLin = 0;  // REQ-906 : linéaire de moulure couronne
+  let valanceLin = 0; // REQ-907 : linéaire de valance lumineuse sous les murales
 
   function layWall(wallKey) {
     const segs = segsByWall[wallKey] || [];
@@ -1270,16 +1440,20 @@ export function buildKitchen(state) {
         // REQ-701 : caissons aux largeurs catalogue (pas de 3 po) + filler pour le reste
         // REQ-1001 : clé stable par position de départ → composition personnalisable
         const gapKey = `${wallKey}:g${Math.round(from / IN)}`;
-        const comp = { totalIn: (to - from) / IN, widths: [], types: [] };
+        const comp = { totalIn: (to - from) / IN, widths: [], types: [], hinges: [] };
         let gi = 0;
         for (const piece of composeGap(gapKey, to - from)) {
           if (piece.filler) {
             slots.push({ w: piece.w, type: 'filler', widthIn: piece.widthIn, gapKey });
           } else {
             const t = piece.planType || (fillIdx % 2 ? 'portes' : 'tiroirs');
-            slots.push({ w: piece.w, type: 'auto-' + t, widthIn: piece.widthIn, gapKey, gapIndex: gi, planned: !!piece.planType });
+            slots.push({
+              w: piece.w, type: 'auto-' + t, widthIn: piece.widthIn, gapKey, gapIndex: gi,
+              planned: !!piece.planType, hinge: piece.planHinge || null,
+            });
             comp.widths.push(piece.widthIn);
             comp.types.push(t);
+            comp.hinges.push(piece.planHinge || null);
             fillIdx++;
             gi++;
           }
@@ -1364,7 +1538,7 @@ export function buildKitchen(state) {
           g = buildOvenColumn(mats, applianceMat, manifest);
           placed.four = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
         } else {
-          g = buildBase(slot.w, type, mats, manifest, slot.widthIn ?? null);
+          g = buildBase(slot.w, type, mats, manifest, slot.widthIn ?? null, slot.hinge ?? null);
           if (type === 'cuisiniere') { manifest.appliances.range = true; placed.cuisiniere = { wall: wallKey, along: along + slot.w / 2, w: slot.w }; }
           // REQ-1004 : la plaque est le centre de cuisson (triangle, hotte, plan) —
           // mais le comptoir continue au-dessus (drapeau plaque)
@@ -1407,6 +1581,7 @@ export function buildKitchen(state) {
           hit.userData = {
             editable: true, moduleId: id, current: type, width: slot.w,
             widthIn: slot.widthIn, gapKey: slot.gapKey, gapIndex: slot.gapIndex,
+            hinge: slot.hinge ?? null,
           };
           g.add(hit);
           editables.push(hit);
@@ -1461,7 +1636,9 @@ export function buildKitchen(state) {
     }
     return spans;
   }
-  const holeW = 0.56, holeD = 0.44, holeD0 = 0.1;
+  // REQ-908 : la cuve farmhouse est plus large et file jusqu'au bord avant du
+  // comptoir (le tablier remplace la bande de chant devant la cuve)
+  const holeW = SINK_FARM ? 0.74 : 0.56, holeD = SINK_FARM ? 0.5 : 0.44, holeD0 = 0.1;
   for (const wk of cabWalls) {
     for (const [s0, s1] of counterSpans(wk)) {
       const hasSink = placed.evier && placed.evier.wall === wk &&
@@ -1471,7 +1648,7 @@ export function buildKitchen(state) {
         addBoxRect(wk, s0, hx0, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
         addBoxRect(wk, hx1, s1, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
         addBoxRect(wk, hx0, hx1, 0, holeD0, COUNTER_H, COUNTER_TOP, counterMat);
-        addBoxRect(wk, hx0, hx1, holeD0 + holeD, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
+        if (!SINK_FARM) addBoxRect(wk, hx0, hx1, holeD0 + holeD, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
       } else {
         addBoxRect(wk, s0, s1, 0, COUNTER_D, COUNTER_H, COUNTER_TOP, counterMat);
       }
@@ -1480,7 +1657,7 @@ export function buildKitchen(state) {
   }
   // évier + robinet
   if (placed.evier) {
-    const sg = buildSink();
+    const sg = buildSink(sinkOpts);
     const p = centeredPlacement(placed.evier.wall, placed.evier.along);
     sg.position.copy(p.pos);
     sg.rotation.y = p.rotY;
@@ -1545,6 +1722,10 @@ export function buildKitchen(state) {
     addBoxRect('back', x0 - 0.01, x0 + WBC_W + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
       WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
     crownLin += WBC_W;
+    // REQ-907 : valance sous le coin aveugle aussi
+    addBoxRect('back', x0 - 0.01, x0 + WBC_W + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.02,
+      WALL_BOT - 0.05, WALL_BOT + 0.002, upFinish);
+    valanceLin += WBC_W;
     const s = findSku('wallBlindCorner', 30);
     if (!manifest.addSku(s, 'Coin aveugle mural 30 po', { zone: 'upper' })) manifest.add('mur');
     return true;
@@ -1586,6 +1767,10 @@ export function buildKitchen(state) {
       addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
         WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
       crownLin += z1 - z0;
+      // REQ-907 : valance lumineuse sous le ruban — cache la bande LED sous-armoire
+      addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.02,
+        WALL_BOT - 0.05, WALL_BOT + 0.002, upFinish);
+      valanceLin += z1 - z0;
       let cx = z0;
       for (const piece of catalogWidths(z1 - z0)) {
         const pl = modulePlacement(wk, cx, piece.w, WALL_BOT);
@@ -1617,6 +1802,17 @@ export function buildKitchen(state) {
     crownLin += tall.w;
   }
 
+  // REQ-907 : la valance se vend en moulure de scribe (longueurs de 96 po)
+  if (valanceLin > 0.05) {
+    const vs = findSku('scribeMolding', 96);
+    const nV = Math.ceil(valanceLin / 2.44);
+    if (vs) {
+      for (let i = 0; i < nV; i++) manifest.addSku(vs, 'Valance lumineuse (moulure 96 po)', { zone: 'upper' });
+    } else {
+      manifest.add('valance', nV);
+    }
+  }
+
   // ——— îlot / péninsule (géométrie résolue plus haut) ———
   const D = decor(S);
   let islandCenter = null;
@@ -1635,7 +1831,10 @@ export function buildKitchen(state) {
     }
     const islSlots = islPieces
       .filter((p) => !p.filler)
-      .map((p, i) => ({ w: p.w, widthIn: p.widthIn, type: p.planType || (i % 2 ? 'portes' : 'tiroirs'), gapIndex: i }));
+      .map((p, i) => ({
+        w: p.w, widthIn: p.widthIn, type: p.planType || (i % 2 ? 'portes' : 'tiroirs'),
+        hinge: p.planHinge || null, gapIndex: i,
+      }));
     // REQ-1006 : l'évier (ou la plaque) occupe le module le plus central ;
     // le lave-vaisselle prend le module voisin
     if (islFeature !== 'aucun' && islSlots.length) {
@@ -1650,13 +1849,16 @@ export function buildKitchen(state) {
         if (di >= 0) { islSlots[di].type = 'lavevaisselle'; islSlots[di].fixed = true; }
       }
     }
-    gapComps['isl'] = { totalIn: islW / IN, widths: islSlots.map((s2) => s2.widthIn), types: islSlots.map((s2) => s2.type), exact: true };
+    gapComps['isl'] = {
+      totalIn: islW / IN, widths: islSlots.map((s2) => s2.widthIn),
+      types: islSlots.map((s2) => s2.type), hinges: islSlots.map((s2) => s2.hinge), exact: true,
+    };
     let cx = islX0 + islW;
     islSlots.forEach((slot, i) => {
       const id = `isl:${i}`;
       const type = slot.type;
       const center = cx - slot.w / 2;
-      const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn);
+      const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn, slot.hinge);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
       ig.add(g);
@@ -1677,7 +1879,7 @@ export function buildKitchen(state) {
         hit.position.set(slot.w / 2, (CARCASS_H + PLINTH) / 2, BASE_D / 2);
         hit.userData = {
           editable: true, moduleId: id, current: type, width: slot.w,
-          widthIn: slot.widthIn, gapKey: 'isl', gapIndex: i,
+          widthIn: slot.widthIn, gapKey: 'isl', gapIndex: i, hinge: slot.hinge ?? null,
         };
         g.add(hit);
         editables.push(hit);
@@ -1687,8 +1889,9 @@ export function buildKitchen(state) {
       cx -= slot.w;
     });
     // évier d'îlot : cuve + robinet tournés vers le côté repas
+    // (le tablier farmhouse ne s'applique qu'aux éviers muraux)
     if (islFeature === 'evier' && placed.evier && placed.evier.isl) {
-      const sg = buildSink();
+      const sg = buildSink({ ...sinkOpts, farmhouse: false });
       sg.rotation.y = Math.PI;
       sg.position.set(placed.evier.x, 0, placed.evier.z + 0.32);
       ig.add(sg);
@@ -1772,6 +1975,58 @@ export function buildKitchen(state) {
   if (!wantIsland && placed.evier && !placed.evier.isl) {
     const bAl = Math.min(Math.max(placed.evier.along - 1.0, 0.4), wallLen[placed.evier.wall] - 0.4);
     inner.add(D.bowl(...pointFor(placed.evier.wall, bAl, 0.33, COUNTER_TOP).toArray()));
+  }
+
+  // REQ-913 : staging — tapis devant l'évier
+  if (placed.evier) {
+    if (placed.evier.isl) {
+      inner.add(D.rug(placed.evier.x, islZ0 - 0.52, 0.95, 0.6, 0));
+    } else {
+      const r = D.rug(0, 0, 0.95, 0.6, 0);
+      r.position.copy(pointFor(placed.evier.wall, placed.evier.along, 1.0, 0.001));
+      r.rotation.y = centeredPlacement(placed.evier.wall, placed.evier.along).rotY;
+      inner.add(r);
+    }
+  }
+  // REQ-913 : torchon — suspendu à la barre du four, sinon plié près de l'évier
+  if (placed.cuisiniere && !placed.cuisiniere.isl && !placed.cuisiniere.plaque) {
+    const p = centeredPlacement(placed.cuisiniere.wall, placed.cuisiniere.along - 0.16, 0.712);
+    const t = D.towel(true);
+    t.position.copy(p.pos);
+    t.rotation.y = p.rotY;
+    t.translateZ(BASE_D + 0.042);
+    inner.add(t);
+  } else if (placed.evier && !placed.evier.isl) {
+    const tAl = Math.min(Math.max(placed.evier.along + 0.55, 0.3), wallLen[placed.evier.wall] - 0.3);
+    const t = D.towel(false);
+    t.position.copy(pointFor(placed.evier.wall, tAl, 0.4, COUNTER_TOP));
+    t.rotation.y = centeredPlacement(placed.evier.wall, tAl).rotY + 0.4;
+    inner.add(t);
+  }
+  // REQ-913 : cafetière sur le comptoir le plus dégagé (loin des centres de travail)
+  {
+    let best = null;
+    for (const wk of cabWalls) {
+      for (const [s0, s1] of counterSpans(wk)) {
+        if (s1 - s0 < 0.55) continue;
+        for (const al of [s0 + 0.28, (s0 + s1) / 2, s1 - 0.28]) {
+          let score = Infinity;
+          for (const it of [placed.evier, placed.cuisiniere, placed.dw]) {
+            if (it && !it.isl && it.wall === wk) score = Math.min(score, Math.abs(al - it.along));
+          }
+          // la plante posée près de l'évier compte aussi comme zone occupée
+          if (placed.evier && !placed.evier.isl && placed.evier.wall === wk) {
+            score = Math.min(score, Math.abs(al - (placed.evier.along + 0.85)));
+          }
+          if (score === Infinity) score = 9; // mur sans centre de travail : idéal
+          if (!best || score > best.score) best = { wk, al, score };
+        }
+      }
+    }
+    if (best && best.score > 0.5) {
+      const rotY = centeredPlacement(best.wk, best.al).rotY;
+      inner.add(D.coffee(...pointFor(best.wk, best.al, 0.36, COUNTER_TOP).toArray(), rotY));
+    }
   }
 
   // ——— calque PLAN : marqueurs interactifs vus de haut ———

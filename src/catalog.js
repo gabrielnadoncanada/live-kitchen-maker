@@ -278,6 +278,7 @@ export const MODULE_PRICES = {
   'mur': { label: 'Armoire murale', price: 289 },
   'garde-manger': { label: 'Garde-manger pleine hauteur', price: 949 },
   'couronne': { label: 'Moulure couronne (96 po)', price: 92 },
+  'valance': { label: 'Valance lumineuse (96 po)', price: 24 },
   'ilot-module': { label: 'Module d’îlot', price: 469 },
   'hotte-coffrage': { label: 'Coffrage de hotte', price: 0 },
 };

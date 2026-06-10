@@ -432,6 +432,21 @@ export function buildPanel() {
     Object.entries(APPLIANCE_FINISHES).map(([k, v]) => [k, v.label]),
     (s) => s.applianceFinish, (k) => setState({ applianceFinish: k })
   ));
+  // REQ-908 : style d'évier (le farmhouse FSBC est facturé au catalogue), cuves, robinet
+  s6.append(el('<div class="swatch-label"><span>Évier</span></div>'));
+  s6.append(segmented(
+    [['encastre', 'Encastré'], ['farmhouse', 'Farmhouse']],
+    (s) => s.sinkStyle || 'encastre', (k) => setState({ sinkStyle: k })
+  ));
+  s6.append(segmented(
+    [['simple', 'Cuve simple'], ['double', 'Cuve double']],
+    (s) => s.sinkBowls || 'simple', (k) => setState({ sinkBowls: k })
+  ));
+  s6.append(el('<div class="swatch-label"><span>Robinet</span></div>'));
+  s6.append(segmented(
+    [['colcygne', 'Col de cygne'], ['pont', 'Pont rétro'], ['pro', 'Professionnel']],
+    (s) => s.faucetStyle || 'colcygne', (k) => setState({ faucetStyle: k })
+  ));
   for (const [key, def] of Object.entries(APPLIANCES)) {
     const row = el(`<div class="opt-row">
       <div><div class="opt-name">${def.label}</div>${selling ? `<div class="opt-price">${fmt(def.price)}</div>` : ''}</div>
@@ -535,8 +550,10 @@ const widthsFor = (t) =>
   : t === 'tiroirs' ? [12, 15, 18, 21, 24, 27, 30, 33, 36]
   : [9, 12, 15, 18, 21, 24, 27, 30, 33, 36];
 
-function writePlan(gapKey, widths, types) {
-  setState({ gapPlans: { [gapKey]: widths ? { widths, types } : null } });
+// hinges (REQ-910) : tableau aligné sur widths ('gauche' | 'droite' | null) —
+// toujours écrit explicitement pour ne jamais garder un tableau périmé après recomposition
+function writePlan(gapKey, widths, types, hinges = null) {
+  setState({ gapPlans: { [gapKey]: widths ? { widths, types, hinges } : null } });
 }
 
 // Change la largeur du caisson idx à newW (po) ; les voisins absorbent la différence
@@ -582,7 +599,7 @@ export function showModuleEditor(x, y, data, comp) {
   opts.innerHTML = '';
 
   const flash = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
-  const apply = (widths, types) => { writePlan(gapKey, widths, types); hidePopover(); };
+  const apply = (widths, types, hinges = null) => { writePlan(gapKey, widths, types, hinges); hidePopover(); };
 
   for (const t of MODULE_TYPES) {
     const b = el(`<button class="${t.key === current ? 'active' : ''}">
@@ -612,6 +629,24 @@ export function showModuleEditor(x, y, data, comp) {
         if (!r) return flash(c);
         if (!typeDef(current).ok(w)) r.types[gapIndex] = w >= 12 ? 'tiroirs' : 'portes';
         apply(r.widths, r.types);
+      });
+      chips.append(c);
+    }
+    opts.append(chips);
+  }
+
+  // — REQ-910 : sens des charnières (portes simples seulement, ≤ 21 po)
+  if (current === 'portes' && widthIn <= 21) {
+    opts.append(el('<div class="pop-label">Charnières (ouverture)</div>'));
+    const hinge = (comp.hinges || [])[gapIndex] || 'gauche';
+    const chips = el('<div class="pop-chips"></div>');
+    for (const [k, label] of [['gauche', '⟸ À gauche'], ['droite', 'À droite ⟹']]) {
+      const c = el(`<button class="chip ${k === hinge ? 'active' : ''}">${label}</button>`);
+      c.addEventListener('click', () => {
+        if (k === hinge) return hidePopover();
+        const hg = comp.widths.map((_, i) => (comp.hinges || [])[i] || null);
+        hg[gapIndex] = k;
+        apply([...comp.widths], [...comp.types], hg);
       });
       chips.append(c);
     }

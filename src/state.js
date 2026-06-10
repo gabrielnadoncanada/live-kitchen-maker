@@ -31,12 +31,16 @@ export const state = {
   floor: 'beton-poli',
   wall: 'blanc-casse',
   appliances: { fridge: true, range: true, hood: true, dw: true },
+  sinkStyle: 'encastre',  // 'encastre' | 'farmhouse' — évier à tablier FSBC (REQ-908)
+  sinkBowls: 'simple',    // 'simple' | 'double' (REQ-908)
+  faucetStyle: 'colcygne',// 'colcygne' | 'pont' | 'pro' (REQ-908)
   cooking: 'cuisiniere',  // 'cuisiniere' | 'mural' — four mural + plaque séparée (REQ-1004)
   hoodType: 'cheminee',   // 'cheminee' | 'micro' — micro-hotte combinée (REQ-1003)
   applianceFinish: 'inox',
   moduleOverrides: {},    // id de module -> 'portes' | 'tiroirs' | 'ouvert'
   // REQ-1001 : composition persistée par segment de comptoir.
-  // clé de segment -> { widths: [poucesPo...], types: { index: type } }
+  // clé de segment -> { widths: [poucesPo...], types: [...], hinges: [...] }
+  // (hinges : REQ-910 — 'gauche' | 'droite' par caisson à porte simple)
   gapPlans: {},
 };
 

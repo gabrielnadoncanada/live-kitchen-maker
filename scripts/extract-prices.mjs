@@ -76,6 +76,10 @@ const data = {
   baseMicrowave: byWidth(sub('base-microwave-cabinet')),
   // colonne four mural (REQ-1004) — OC33X103.5
   ovenColumn: byWidth(sub('utility-cabinet-oven'), 100),
+  // caisson d'évier farmhouse (REQ-908) — FSBC33 / FSBC36
+  farmhouseSinkBase: byWidth(sub('base-cabinet-farmhouse-sink')),
+  // moulure de scribe (REQ-907 : la valance lumineuse se vend en longueurs de 96 po)
+  scribeMolding: byWidth(sub('moldings-scribe-molding')),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales
   filler: byWidth(sub('fillers-base-wall-tall-filler'), 30),
   // panneaux

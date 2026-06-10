@@ -387,6 +387,26 @@
       "price": 1016.4
     }
   },
+  "farmhouseSinkBase": {
+    "33": {
+      "sku": "FSBC33-FW",
+      "price": 261.3
+    },
+    "36": {
+      "sku": "FSBC36-FW",
+      "price": 281.1
+    }
+  },
+  "scribeMolding": {
+    "96": {
+      "sku": "SM1.5",
+      "price": 15.3
+    },
+    "120": {
+      "sku": "SM1.5X120",
+      "price": 23.7
+    }
+  },
   "filler": {
     "3": {
       "sku": "WF330-FW",

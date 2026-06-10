@@ -183,10 +183,10 @@ travail. Classés par impact sur la crédibilité.
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
 | REQ-906 | **Moulure couronne** en haut des armoires murales — au catalogue, demande client n°1 ; le haut des murales finit à nu. | Haute | ✅ couronne sur rubans muraux, coin aveugle et colonnes ; facturée en longueurs de 96 po (ligne générique — pas de SKU couronne dans l'extrait catalogue) |
-| REQ-907 | **Valance lumineuse** sous les murales (cache la bande LED — produit moulure). | Basse | ⬜ |
-| REQ-908 | **Évier farmhouse** (FSBC33/36 au catalogue) + choix simple/double cuve + 2-3 styles de robinets. | Moyenne | ⬜ |
+| REQ-907 | **Valance lumineuse** sous les murales (cache la bande LED — produit moulure). | Basse | ✅ bande en finition des hauts sous chaque ruban mural et le coin aveugle (la LED existante devient « cachée ») ; facturée en moulure de scribe SM1.5 par longueurs de 96 po |
+| REQ-908 | **Évier farmhouse** (FSBC33/36 au catalogue) + choix simple/double cuve + 2-3 styles de robinets. | Moyenne | ✅ section 07 : Encastré/Farmhouse (tablier fireclay proud des portes, comptoir découpé jusqu'au bord, caisson FSBC36 facturé, portes raccourcies), cuve simple/double, robinets col de cygne / pont rétro / professionnel (ressort) ; l'évier d'îlot reste encastré |
 | REQ-909 | **Panneau d'extrémité mural** (WEP) sur les bouts de murales exposés — l'équivalent haut de la fausse porte des bas. | Moyenne | ⬜ |
-| REQ-910 | **Sens des charnières** (porte gauche/droite) — information de commande réelle, sélectionnable au clic sur le module. | Basse | ⬜ |
+| REQ-910 | **Sens des charnières** (porte gauche/droite) — information de commande réelle, sélectionnable au clic sur le module. | Basse | ✅ chips « Charnières » dans l'éditeur de module (portes simples ≤ 21 po) ; persisté dans `gapPlans.hinges` (donc dans le lien de partage et le lead) ; poignée et charnières apparentes du bon côté en 3D |
 
 ### Réalisme des matériaux
 
@@ -199,7 +199,7 @@ travail. Classés par impact sur la crédibilité.
 
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
-| REQ-913 | **Staging enrichi** : vaisselle dans les niches, cafetière/petit électro, torchon, store ou rideau, tapis — la déco actuelle (plante + bol + planche) est trop maigre pour créer l'émotion. | Moyenne | ⬜ |
+| REQ-913 | **Staging enrichi** : vaisselle dans les niches, cafetière/petit électro, torchon, store ou rideau, tapis — la déco actuelle (plante + bol + planche) est trop maigre pour créer l'émotion. | Moyenne | ✅ store enrouleur en lin sur chaque fenêtre, cafetière espresso sur le comptoir le plus dégagé (score de distance aux centres de travail), torchon lin/terracotta suspendu à la barre du four (plié près de l'évier sinon), tapis tissé devant l'évier (mur ou îlot), niches ouvertes garnies (assiettes, tasses, bols, linge) |
 
 ### Expérience client (funnel)
 
