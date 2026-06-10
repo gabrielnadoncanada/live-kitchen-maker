@@ -24,7 +24,10 @@ const WALL_CAB_H = 0.75;
 const WALL_CAB_D = 0.305; // 12 po — profondeur murale catalogue (REQ-702)
 const PANTRY_D = 0.69;    // 27 po — profondeur garde-manger catalogue (REQ-702)
 const TALL_H = WALL_BOT + WALL_CAB_H;        // 2.25
-const ROOM_H = 2.72;
+// REQ-708 : hauteur de pièce selon le plafond du client (8/9/10 pi) —
+// mutée au début de chaque buildKitchen (construction synchrone)
+let ROOM_H = 2.74;
+const CEILINGS = { 8: 2.44, 9: 2.74, 10: 3.05 };
 const CORNER = 0.92;
 const DOOR_T = 0.019;
 const GAP = 0.004;
@@ -545,6 +548,7 @@ class Manifest {
 
 // ————————————————————————— CONSTRUCTION PRINCIPALE —————————————————————————
 export function buildKitchen(state) {
+  ROOM_H = CEILINGS[state.ceiling] || CEILINGS[9];
   const S = fixedMats();
   const manifest = new Manifest();
   const root = new THREE.Group();
@@ -806,6 +810,8 @@ export function buildKitchen(state) {
   const editables = [];
   const placed = { evier: null, cuisiniere: null, frigo: null };
   const moduleCounters = {};
+  const placedIntervals = { back: [], left: [], right: [] }; // REQ-803 : filet AABB
+  let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
 
   function layWall(wallKey) {
     const segs = segsByWall[wallKey] || [];
@@ -950,6 +956,16 @@ export function buildKitchen(state) {
           else if (i === slots.length - 1) slot.dwPanel = 'fin';
         }
       });
+      // REQ-711 : un bout de segment qui ne bute pas sur un caisson de coin
+      // est un flanc visible → fausse porte de finition
+      const startExposed = wallKey === 'back'
+        ? !(hasCornerL && Math.abs(s0 - CORNER) < 0.03)
+        : !(Math.abs(s0 - CORNER) < 0.03);
+      const endExposed = !(wallKey === 'back' && hasCornerR && Math.abs(s1 - (a - CORNER)) < 0.03);
+      if (slots.length) {
+        if (startExposed) slots[0].panelStart = true;
+        if (endExposed) slots[slots.length - 1].panelEnd = true;
+      }
       // poser les modules
       let along = s0;
       // recale pour que les modules collent : la somme des slots = segLen par construction
@@ -1011,7 +1027,21 @@ export function buildKitchen(state) {
             }
           }
           if (type === 'evier') placed.evier = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
+          // REQ-711 : fausses portes sur les flancs exposés des caissons bas
+          const dummyTypes = ['portes', 'tiroirs', 'ouvert', 'filler', 'evier'];
+          if ((slot.panelStart || slot.panelEnd) && dummyTypes.includes(type)) {
+            const ds = findSku('dummyBaseEnd', 25);
+            for (const side of [slot.panelStart && 'debut', slot.panelEnd && 'fin'].filter(Boolean)) {
+              const f = makeFront(BASE_D - 0.05, CARCASS_H - 0.03, finish, state.doorStyle);
+              f.rotation.y = side === 'debut' ? -Math.PI / 2 : Math.PI / 2;
+              f.position.set(side === 'debut' ? -0.012 : slot.w + 0.012, PLINTH + CARCASS_H / 2, BASE_D / 2);
+              g.add(f);
+              manifest.addSku(ds, 'Bout de bas (fausse porte)');
+            }
+          }
         }
+        placedIntervals[wallKey].push({ a0: along, a1: along + slot.w, t: type });
+        if (type !== 'cuisiniere') plinthLin += slot.w;
         g.position.copy(pl.pos);
         g.rotation.y = pl.rotY;
         inner.add(g);
@@ -1048,6 +1078,8 @@ export function buildKitchen(state) {
     inner.add(cg);
     const cs = findSku('baseCorner', Math.round(CORNER / IN));
     if (!manifest.addSku(cs, `Caisson de coin ${cs?.widthIn} po`)) manifest.add('base-coin');
+    placedIntervals.back.push({ a0: mirror ? a - CORNER : 0, a1: mirror ? a : CORNER, t: 'coin' });
+    plinthLin += CORNER;
     return x0;
   }
   if (hasCornerL) cornerUnit(false);
@@ -1213,6 +1245,7 @@ export function buildKitchen(state) {
   const D = decor(S);
   let islandCenter = null;
   let islandGroup = null;
+  let islandRect = null;
   if (state.island) {
     // largeur aimantée au pas de 3 po : les modules d'îlot sont des caissons catalogue
     const islW = Math.round(Math.min(Math.max(a - 2.0, 1.5), 2.6) / (3 * IN)) * 3 * IN;
@@ -1241,8 +1274,10 @@ export function buildKitchen(state) {
       g.add(hit);
       editables.push(hit);
       manifest.islandModules++;
+      plinthLin += slot.w;
       cx -= slot.w;
     });
+    islandRect = { x0: islX0 - 0.08, x1: islX0 + islW + 0.08, z0: islZ0 - 0.03, z1: islZ0 + islD + 0.07 };
     // REQ-709 : les panneaux d'îlot sont des produits facturés (arrière + habillage ×2)
     manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot');
     const skin = findSku('islandSkinPanel');
@@ -1516,6 +1551,25 @@ export function buildKitchen(state) {
     ? toWorld(pointFor(placed.evier.wall, placed.evier.along, 0.4, 0.95))
     : toWorld(new THREE.Vector3(a / 2, 0.95, 0.4));
 
+  // REQ-714 : la plinthe (toe-kick) se vend en longueurs de 96 po
+  {
+    const tk = findSku('toeKick');
+    const longueurs = Math.ceil(plinthLin / 2.44);
+    for (let i = 0; i < longueurs; i++) manifest.addSku(tk, 'Plinthe (toe-kick) 96 po', { finishMult: false });
+  }
+
+  // REQ-803 : filet AABB — en dev, signale tout chevauchement de caissons sur un mur
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    for (const [wk, list] of Object.entries(placedIntervals)) {
+      const sorted = [...list].sort((p, q) => p.a0 - q.a0);
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i].a0 < sorted[i - 1].a1 - 0.005) {
+          console.warn(`[REQ-803] Chevauchement sur le mur ${wk} : ${sorted[i - 1].t} [${sorted[i - 1].a0.toFixed(2)}–${sorted[i - 1].a1.toFixed(2)}] ↔ ${sorted[i].t} [${sorted[i].a0.toFixed(2)}–${sorted[i].a1.toFixed(2)}]`);
+        }
+      }
+    }
+  }
+
   // données pour le validateur NKBA (triangle de travail, surfaces de dépôt,
   // séparation des centres, dégagements, fenêtres)
   const nkbaInfo = {
@@ -1529,6 +1583,13 @@ export function buildKitchen(state) {
     pts: {},
     spans: {},
     wins: winsByWall,
+    // REQ-804 : données pour le débattement des portes
+    doors: doorsByWall,
+    islandRect,
+    dims: { a, roomD },
+    planes: { left: wallPlane.left.at, right: wallPlane.right.at },
+    cabWalls,
+    wallLens: wallLen,
   };
   for (const [k, p] of Object.entries(nkbaInfo.placed)) {
     if (p) nkbaInfo.pts[k] = toWorld(pointFor(p.wall, p.along, 0.3, 0));

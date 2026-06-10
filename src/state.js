@@ -5,6 +5,7 @@ export const state = {
   layout: 'l',            // 'lineaire' | 'l' | 'u'
   island: true,
   dims: { a: 4.4, b: 3.2, c: 3.0 },
+  ceiling: 9,             // hauteur de plafond en pieds : 8 | 9 | 10
   // contraintes réelles de la pièce
   constraints: {
     water: { auto: true, wall: 'back', pos: 2.2 },   // entrée d'eau → position de l'évier

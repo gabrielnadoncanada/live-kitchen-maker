@@ -52,6 +52,14 @@ const data = {
   ),
   // coin aveugle mural (REQ-704) — hauteur 30
   wallBlindCorner: byWidth(sub('wall-blind-corner'), 30),
+  // fausse porte de bout de bas (REQ-711) — hauteur 36
+  dummyBaseEnd: byWidth(sub('dummy-door-base-end'), 36),
+  // plinthe vendue en longueurs de 96 po (REQ-714)
+  toeKick: (() => {
+    const list = sub('toe-kick').sort((a, b) => +a.price - +b.price);
+    const r = list[0];
+    return r ? { sku: skuOf(r), price: +r.price } : null;
+  })(),
   // garde-manger — hauteur ~90 (≈ notre 2,25 m), prof. 27
   pantry: byWidth(sub('utility-cabinet-pantry'), 90),
   // fillers (1½ / 3 / 6 po) — hauteur 30 pour les bas/murales

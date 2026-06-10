@@ -67,7 +67,7 @@ Sources :
 | REQ-401 | **Caisson de coin** dédié (92 cm d'emprise) avec retour plein — jamais deux caissons en collision dans l'angle. | Haute | ✅ |
 | REQ-402 | Largeurs de modules réalistes : remplissage par caissons de ~60 cm ; un reste < 32 cm devient un **fileur** (panneau), pas un mini-caisson. | Haute | ✅ |
 | REQ-403 | **Socle en retrait** (toe-kick) de 10 cm sous tous les caissons bas et colonnes. | Haute | ✅ |
-| REQ-404 | Bouts de ruban exposés : flanc fini dans le matériau des façades (gable de finition). | Moyenne | 🟡 la carcasse reprend la finition ; pas de panneau dédié facturé |
+| REQ-404 | Bouts de ruban exposés : flanc fini dans le matériau des façades (gable de finition). | Moyenne | ✅ via REQ-711 (fausses portes facturées) |
 | REQ-405 | Armoires murales : **bande lumineuse sous-armoire**, profondeur 35 cm, alignement haut à 2,25 m avec les colonnes. | Moyenne | ✅ |
 | REQ-406 | Les armoires murales **évitent fenêtres, hotte et colonnes** ; aucun module < 34 cm. | Haute | ✅ |
 | REQ-407 | Poignées cohérentes : barre verticale sur portes, horizontale sur tiroirs, comptées au devis (même « intégrées »). | Moyenne | ✅ |
@@ -136,13 +136,13 @@ paramètre produit**.
 | REQ-705 | **Devis par SKU** : chaque pièce générée référence un SKU réel (`W0930`, `DRBC12`, `RRP103.5`…) avec son prix catalogue — le devis devient un bon de commande. | Haute | ✅ lignes de devis par SKU réel (DRBC30, W0930, WP249027, RRP, IBP…) × finition |
 | REQ-706 | Finitions alignées sur l'offre réelle du tenant via le filtre catalogue. | Moyenne | ✅ mécanique en place — reste à configurer le tenant Dilamco |
 | REQ-707 | **Multiplicateur de fini réaliste** : Chêne blanc = +13 % vs Blanc Pur au catalogue réel — nos multiplicateurs bois (×1,45–1,6) sont trop agressifs pour ce fabricant. Paramétrer par tenant. | Moyenne | ✅ `catalog.finishMultipliers` par tenant |
-| REQ-708 | **Hauteur de plafond paramétrable** (8 / 10 / 10½ pi) pilotant hauteurs de murales, garde-manger et fillers pleine hauteur. | Moyenne | ⬜ plafond fixe 2,72 m |
+| REQ-708 | **Hauteur de plafond paramétrable** (8 / 10 / 10½ pi) pilotant hauteurs de murales, garde-manger et fillers pleine hauteur. | Moyenne | ✅ sélecteur 8/9/10 pi (murs, cheminée de hotte, suspensions) |
 | REQ-709 | **Panneaux d'îlot facturés** : le panneau arrière et l'habillage d'îlot sont des produits (66–134 $) — nous les dessinons sans les facturer. | Haute | ✅ panneau arrière + 2 habillages facturés |
 | REQ-710 | **Panneau de retour lave-vaisselle** (3 po) quand le LV termine un ruban — produit réel DWR. | Moyenne | ✅ détection bout de segment + panneau DWR facturé |
-| REQ-711 | **Fausses portes** sur les flancs visibles (bouts de bas, murales, garde-manger) — raffinement de REQ-404 avec le produit réel (dummy doors). | Moyenne | ⬜ |
+| REQ-711 | **Fausses portes** sur les flancs visibles (bouts de bas, murales, garde-manger) — raffinement de REQ-404 avec le produit réel (dummy doors). | Moyenne | ✅ fausses portes (BDD) posées et facturées sur les flancs exposés des bas |
 | REQ-712 | **Tiroir à déchets coulissant** près de l'évier — couvre NKBA 15 (waste receptacles) avec un produit réel au catalogue (18 po). | Basse | ⬜ |
 | REQ-713 | **Range-épices coulissant 6/9/12 po** : utiliser les petits restes de ruban comme produit utile plutôt que comme filler perdu. | Basse | ⬜ |
-| REQ-714 | **Toe-kick et moulures facturés au linéaire** (longueurs de 96 po) plutôt qu'inclus silencieusement. | Basse | ⬜ |
+| REQ-714 | **Toe-kick et moulures facturés au linéaire** (longueurs de 96 po) plutôt qu'inclus silencieusement. | Basse | ✅ facturée en longueurs de 96 po (TK8) selon le linéaire réel |
 
 ---
 
@@ -156,8 +156,8 @@ que détecter après coup ; la détection AABB généralisée reste le filet de 
 |----|--------|------|--------|
 | REQ-801 | **Comptoirs et dosserets découpés aux colonnes** : ils s'interrompent au frigo et au garde-manger (et à la cuisinière ✅, aux portes ✅) — jamais de comptoir qui traverse un caisson, et leur emprise ne se facture pas en pi². | Haute | ✅ |
 | REQ-802 | **Ouvertures sans chevauchement** : deux fenêtres/portes ne peuvent jamais se superposer sur un même mur (jeu min. 6 cm). Toutes les voies de modification passent par le résolveur (`src/openings.js`) : drag plan/élévation, curseurs position/largeur, changement de mur, menus d'ajout — l'élément s'arrête au bord de son voisin, l'ajout est refusé si le mur est plein. | Haute | ✅ |
-| REQ-803 | **Collision AABB généralisée** (G3 de l'ancien validateur) : vérification paire-à-paire de tous les éléments générés en coordonnées monde, comme filet de sécurité avec rapport de violations en console dev. | Moyenne | ⬜ |
-| REQ-804 | **Débattement de porte libre** (G6/NKBA 2) : le balayage à 90° d'une porte ne heurte ni caisson, ni îlot, ni électroménager. | Moyenne | ⬜ l'emprise statique de la porte est respectée, pas son balayage |
+| REQ-803 | **Collision AABB généralisée** (G3 de l'ancien validateur) : vérification paire-à-paire de tous les éléments générés en coordonnées monde, comme filet de sécurité avec rapport de violations en console dev. | Moyenne | ✅ filet par intervalles le long des murs, rapport console en dev |
+| REQ-804 | **Débattement de porte libre** (G6/NKBA 2) : le balayage à 90° d'une porte ne heurte ni caisson, ni îlot, ni électroménager. | Moyenne | ✅ avertissement NKBA 2 (îlot et caissons des autres murs) |
 | REQ-805 | Aucun élément hors des limites de la pièce ou de son mur (G2/G5) : garanti par construction (clamps des segments et des ouvertures). | Haute | ✅ |
 | REQ-806 | Les ouvertures ne chevauchent pas les caissons pleine hauteur (G4) : portes = segments interdits ✅, fenêtres = interdites aux colonnes ✅, armoires murales évitent les fenêtres ✅. | Haute | ✅ |
 

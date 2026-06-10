@@ -328,6 +328,13 @@ export function buildPanel() {
     slC.style.display = s.layout === 'u' ? '' : 'none';
     slA._input.min = s.layout === 'u' ? 4.3 : 3.4;
   });
+  // REQ-708 : hauteur de plafond
+  s2.append(el('<div class="swatch-label"><span>Hauteur de plafond</span></div>'));
+  s2.append(segmented(
+    [['8', '8 pi'], ['9', '9 pi'], ['10', '10 pi']],
+    (s) => String(s.ceiling || 9),
+    (k) => setState({ ceiling: +k })
+  ));
   root.append(s2);
 
   // 3 · VOTRE PIÈCE (contraintes réelles)

@@ -106,6 +106,40 @@ export function computeNkbaWarnings(nkba) {
     }
   }
 
+  // ——— NKBA 2 (REQ-804) : le débattement des portes ne heurte rien ———
+  if (nkba.doors && nkba.dims) {
+    const { a, roomD } = nkba.dims;
+    const inter = (r, q) => r.x0 < q.x1 && r.x1 > q.x0 && r.z0 < q.z1 && r.z1 > q.z0;
+    // emprise du quart de débattement, en coordonnées pièce
+    const swing = (wall, pos, w) => {
+      if (wall === 'back') return { x0: pos - w / 2, x1: pos + w / 2, z0: 0, z1: w };
+      const px = nkba.planes[wall];
+      return wall === 'left'
+        ? { x0: px, x1: px + w, z0: pos - w / 2, z1: pos + w / 2 }
+        : { x0: px - w, x1: px, z0: pos - w / 2, z1: pos + w / 2 };
+    };
+    // bandes de caissons bas des autres murs
+    const strips = {
+      back: { x0: 0, x1: a, z0: 0, z1: 0.66 },
+      left: { x0: nkba.planes.left, x1: nkba.planes.left + 0.66, z0: 0.92, z1: nkba.wallLens?.left ?? roomD },
+      right: { x0: nkba.planes.right - 0.66, x1: nkba.planes.right, z0: 0.92, z1: nkba.wallLens?.right ?? roomD },
+    };
+    for (const wall of ['back', 'left', 'right']) {
+      for (const door of nkba.doors[wall] || []) {
+        const zone = swing(wall, door.pos, door.width);
+        if (nkba.islandRect && inter(zone, nkba.islandRect)) {
+          out.push({ id: 'NKBA2', msg: `Le débattement de la porte heurte l'îlot — déplacez la porte ou réduisez l'îlot.` });
+        }
+        for (const wk of nkba.cabWalls || []) {
+          if (wk === wall) continue; // son propre mur est déjà dégagé par les segments
+          if (inter(zone, strips[wk])) {
+            out.push({ id: 'NKBA2', msg: `Le débattement de la porte heurte les caissons du mur ${wk === 'back' ? 'principal' : wk === 'left' ? 'gauche' : 'droit'}.` });
+          }
+        }
+      }
+    }
+  }
+
   // ——— NKBA 20 : cuisinière sous une fenêtre (position 240 V imposée) ———
   if (placed.cuisiniere && nkba.wins) {
     for (const win of nkba.wins[placed.cuisiniere.wall] || []) {
