@@ -28,6 +28,16 @@ export function computeNkbaWarnings(nkba) {
   const out = [];
   const { pts, placed, spans, island } = nkba;
 
+  // appareils demandés mais impossibles à placer avec les contraintes actuelles
+  if (nkba.wanted) {
+    const noms = { frigo: 'le réfrigérateur', dw: 'le lave-vaisselle', cuisiniere: 'la cuisinière' };
+    for (const [k, label] of Object.entries(noms)) {
+      if (nkba.wanted[k] && !placed[k]) {
+        out.push({ id: 'PLACEMENT', msg: `Impossible de placer ${label} avec ces contraintes (plomberie, prise, fenêtres, portes) — élargissez un mur ou déplacez une contrainte.` });
+      }
+    }
+  }
+
   // ——— NKBA 26 : triangle de travail ———
   if (pts.evier && pts.cuisiniere && pts.frigo) {
     const legs = [
@@ -69,6 +79,40 @@ export function computeNkbaWarnings(nkba) {
     const { left, right } = landings(spans[placed.frigo.wall], placed.frigo.along, placed.frigo.w / 2);
     if (Math.max(left, right) < 0.38 && !island) {
       out.push({ id: 'NKBA18', msg: `Réfrigérateur : aucune surface de dépôt à proximité (38 cm recommandés, ou un îlot en face).` });
+    }
+  }
+
+  // ——— NKBA 12 : aucune colonne entre l'évier et la cuisinière (filet du solveur) ———
+  if (placed.evier && placed.cuisiniere && placed.evier.wall === placed.cuisiniere.wall) {
+    const lo = Math.min(placed.evier.along, placed.cuisiniere.along);
+    const hi = Math.max(placed.evier.along, placed.cuisiniere.along);
+    for (const key of ['frigo', 'pantry']) {
+      const t = placed[key];
+      if (t && t.wall === placed.evier.wall && t.along > lo && t.along < hi) {
+        out.push({ id: 'NKBA12', msg: `Le ${key === 'frigo' ? 'réfrigérateur' : 'garde-manger'} coupe le plan de travail entre l'évier et la cuisinière.` });
+      }
+    }
+  }
+
+  // ——— NKBA 16 : dégagement debout au lave-vaisselle (21 po de chaque côté) ———
+  if (placed.dw) {
+    for (const key of ['frigo', 'pantry']) {
+      const t = placed[key];
+      if (!t || t.wall !== placed.dw.wall) continue;
+      const gap = Math.abs(t.along - placed.dw.along) - t.w / 2 - placed.dw.w / 2;
+      if (gap < 0.53 && gap > -0.05) {
+        out.push({ id: 'NKBA16', msg: `Lave-vaisselle : ${cm(Math.max(0, gap))} de dégagement debout contre une colonne (53 cm recommandés).` });
+      }
+    }
+  }
+
+  // ——— NKBA 20 : cuisinière sous une fenêtre (position 240 V imposée) ———
+  if (placed.cuisiniere && nkba.wins) {
+    for (const win of nkba.wins[placed.cuisiniere.wall] || []) {
+      const lo = win.pos - win.width / 2, hi = win.pos + win.width / 2;
+      if (placed.cuisiniere.along + RANGE_W / 2 > lo && placed.cuisiniere.along - RANGE_W / 2 < hi) {
+        out.push({ id: 'NKBA20', msg: `Cuisinière sous une fenêtre — interdit par le code si la fenêtre est ouvrante (rideaux, feu).` });
+      }
     }
   }
 

@@ -87,6 +87,11 @@ function applyCatalog() {
       if (target[k]) target[k].price = price;
     }
   }
+  // REQ-707 : multiplicateurs de finition réels du fabricant
+  // (ex. Dilamco : Chêne blanc = +13 %, pas nos défauts génériques de +45-60 %)
+  for (const [k, m] of Object.entries(tenant.catalog.finishMultipliers || {})) {
+    if (CABINET_FINISHES[k]) CABINET_FINISHES[k].mult = m;
+  }
   const mult = tenant.business.priceMultiplier;
   if (mult !== 1) {
     for (const def of Object.values(MODULE_PRICES)) def.price = Math.round(def.price * mult);

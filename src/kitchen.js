@@ -21,7 +21,8 @@ const BASE_D = 0.6;
 const COUNTER_D = 0.66;
 const WALL_BOT = 1.5;
 const WALL_CAB_H = 0.75;
-const WALL_CAB_D = 0.35;
+const WALL_CAB_D = 0.305; // 12 po — profondeur murale catalogue (REQ-702)
+const PANTRY_D = 0.69;    // 27 po — profondeur garde-manger catalogue (REQ-702)
 const TALL_H = WALL_BOT + WALL_CAB_H;        // 2.25
 const ROOM_H = 2.72;
 const CORNER = 0.92;
@@ -264,7 +265,7 @@ function buildPantry(mats, manifest) {
   const { finish, handleKind, handleMat, doorStyle } = mats;
   const g = new THREE.Group();
   const S = fixedMats();
-  const W = PANTRY_W, D = BASE_D;
+  const W = PANTRY_W, D = PANTRY_D;
   g.add(box(W, PLINTH, D - 0.07, S.shadeBlack, W / 2, PLINTH / 2, (D - 0.07) / 2));
   g.add(box(W - 0.004, TALL_H - PLINTH, D - 0.04, finish, W / 2, PLINTH + (TALL_H - PLINTH) / 2, (D - 0.04) / 2));
   const zF = D - DOOR_T / 2;
@@ -699,9 +700,11 @@ export function buildKitchen(state) {
   // ——— résolution des positions imposées (eau, cuisinière, frigo) ———
   const cons = state.constraints || {};
   let sinkWall, sinkAlong;
+  let sinkIsAuto = true;
   if (cons.water && !cons.water.auto && cabWalls.includes(cons.water.wall) && largestSeg(cons.water.wall)) {
     sinkWall = cons.water.wall;
     sinkAlong = cons.water.pos;
+    sinkIsAuto = false;
   } else {
     // auto : sous la première fenêtre d'un mur à caissons, sinon centre du plus grand segment
     const win = openings.find((o) => o.type === 'fenetre' && cabWalls.includes(o.wall) && largestSeg(o.wall));
@@ -713,9 +716,11 @@ export function buildKitchen(state) {
     }
   }
   let stoveWall, stoveAlong;
+  let stoveIsAuto = true;
   if (cons.stove && !cons.stove.auto && cabWalls.includes(cons.stove.wall) && largestSeg(cons.stove.wall)) {
     stoveWall = cons.stove.wall;
     stoveAlong = cons.stove.pos;
+    stoveIsAuto = false;
   } else {
     stoveWall = sinkWall;
     const seg = largestSeg(stoveWall);
@@ -806,13 +811,39 @@ export function buildKitchen(state) {
     const segs = segsByWall[wallKey] || [];
     if (!segs.length) return;
     const items = [...fixedByWall[wallKey]].sort((p, q) => p.want - q.want);
-    // les colonnes se recalent dans le sous-segment pleine hauteur le plus proche
+    // REQ-108 (NKBA 20) : la cuisinière auto fuit les fenêtres (sécurité incendie)
+    for (const it of items) {
+      if (it.type !== 'cuisiniere' || !stoveIsAuto) continue;
+      for (const win of winsByWall[wallKey] || []) {
+        const lo = win.pos - win.width / 2, hi = win.pos + win.width / 2;
+        if (it.want + it.w / 2 > lo && it.want - it.w / 2 < hi) {
+          const left = lo - it.w / 2 - 0.05, right = hi + it.w / 2 + 0.05;
+          it.want = Math.abs(left - it.want) < Math.abs(right - it.want) ? left : right;
+        }
+      }
+    }
+    // REQ-209 (NKBA 12) : zone interdite aux colonnes entre l'évier et la cuisinière
+    const sinkF = items.find((i) => i.type === 'evier');
+    const rangeF = items.find((i) => i.type === 'cuisiniere');
+    const tiLo = sinkF && rangeF ? Math.min(sinkF.want, rangeF.want) : null;
+    const tiHi = sinkF && rangeF ? Math.max(sinkF.want, rangeF.want) : null;
+    // les colonnes se recalent dans le sous-segment pleine hauteur le plus proche,
+    // hors de la zone évier–cuisinière
     for (const item of items) {
       if (!item.tall) continue;
       let best = null, bestD = Infinity;
       for (const [t0, t1] of tallSegsByWall[wallKey] || []) {
         if (t1 - t0 < item.w) continue;
-        const c = Math.min(Math.max(item.want, t0 + item.w / 2), t1 - item.w / 2);
+        let c = Math.min(Math.max(item.want, t0 + item.w / 2), t1 - item.w / 2);
+        if (tiLo != null && c > tiLo && c < tiHi) {
+          // candidat entre les deux centres de travail : tenter les bords du sous-segment
+          const cands = [
+            Math.min(Math.max(tiLo - item.w / 2, t0 + item.w / 2), t1 - item.w / 2),
+            Math.min(Math.max(tiHi + item.w / 2, t0 + item.w / 2), t1 - item.w / 2),
+          ].filter((x) => !(x > tiLo && x < tiHi));
+          if (!cands.length) continue;
+          c = cands.reduce((b, x) => (Math.abs(x - item.want) < Math.abs(b - item.want) ? x : b));
+        }
         const d = Math.abs(c - item.want);
         if (d < bestD) { bestD = d; best = c; }
       }
@@ -853,16 +884,44 @@ export function buildKitchen(state) {
         // sinon : réellement retiré (aucune place sur ce mur ni les autres)
       }
     }
+    // REQ-107 : marge de comptoir obligatoire entre la cuisinière et une colonne
+    // (chaleur + NKBA 19) — l'espace créé est rempli par un caisson/filler avec comptoir
+    const isTall = (it) => it && (it.type === 'frigo' || it.type === 'garde-manger');
+    const reqGap = (p, q) =>
+      (p && q && ((p.type === 'cuisiniere' && isTall(q)) || (isTall(p) && q.type === 'cuisiniere'))) ? 0.31 : 0;
     segs.forEach(([s0, s1], si) => {
-      const segItems = bySeg[si].sort((p, q) => p.want - q.want);
-      const xs = segItems.map((it) => Math.min(Math.max(it.want - it.w / 2, s0), s1 - it.w));
-      for (let i = 1; i < xs.length; i++) xs[i] = Math.max(xs[i], xs[i - 1] + segItems[i - 1].w);
-      let limit = s1;
-      for (let i = xs.length - 1; i >= 0; i--) {
-        xs[i] = Math.min(xs[i], limit - segItems[i].w);
-        limit = xs[i];
+      let segItems = bySeg[si].sort((p, q) => p.want - q.want);
+      let xs;
+      // dé-superposition — si elle déloge un appareil contraint (évier sur sa
+      // plomberie, cuisinière sur sa prise), on sacrifie l'item le moins
+      // prioritaire du segment et on recommence
+      for (let essai = 0; essai <= bySeg[si].length; essai++) {
+        xs = segItems.map((it) => Math.min(Math.max(it.want - it.w / 2, s0), s1 - it.w));
+        for (let i = 1; i < xs.length; i++) {
+          xs[i] = Math.max(xs[i], xs[i - 1] + segItems[i - 1].w + reqGap(segItems[i - 1], segItems[i]));
+        }
+        let limit = s1;
+        for (let i = xs.length - 1; i >= 0; i--) {
+          xs[i] = Math.min(xs[i], limit - segItems[i].w - reqGap(segItems[i], segItems[i + 1]));
+          limit = xs[i];
+        }
+        for (let i = 1; i < xs.length; i++) {
+          xs[i] = Math.max(xs[i], xs[i - 1] + segItems[i - 1].w + reqGap(segItems[i - 1], segItems[i]));
+        }
+        const contraint = (it) =>
+          (it.type === 'evier' && !sinkIsAuto) || (it.type === 'cuisiniere' && !stoveIsAuto);
+        const di = segItems.findIndex(
+          (it, i) => contraint(it) && Math.abs(xs[i] + it.w / 2 - it.want) > 0.2
+        );
+        if (di < 0 || !segItems.length) break;
+        // sacrifier du côté qui pousse l'appareil contraint, par priorité décroissante
+        const pousseDroite = xs[di] + segItems[di].w / 2 > segItems[di].want;
+        const cote = segItems.filter((it, i) => (pousseDroite ? i < di : i > di) && !contraint(it));
+        const pool = cote.length ? cote : segItems.filter((it) => !contraint(it));
+        if (!pool.length) break;
+        const worst = pool.reduce((m, it) => (it.prio > m.prio ? it : m), pool[0]);
+        segItems = segItems.filter((it) => it !== worst);
       }
-      for (let i = 1; i < xs.length; i++) xs[i] = Math.max(xs[i], xs[i - 1] + segItems[i - 1].w);
       // construire la liste finale de slots (remplissage automatique entre les items fixes)
       const slots = [];
       let cursor = s0;
@@ -943,6 +1002,7 @@ export function buildKitchen(state) {
           if (type === 'cuisiniere') { manifest.appliances.range = true; placed.cuisiniere = { wall: wallKey, along: along + slot.w / 2, w: slot.w }; }
           if (type === 'lavevaisselle') {
             manifest.appliances.dw = true;
+            placed.dw = { wall: wallKey, along: along + slot.w / 2, w: slot.w };
             if (slot.dwPanel) {
               // REQ-710 : panneau de retour côté exposé du lave-vaisselle
               const px = slot.dwPanel === 'debut' ? -0.011 : slot.w + 0.011;
@@ -1456,12 +1516,19 @@ export function buildKitchen(state) {
     ? toWorld(pointFor(placed.evier.wall, placed.evier.along, 0.4, 0.95))
     : toWorld(new THREE.Vector3(a / 2, 0.95, 0.4));
 
-  // données pour le validateur NKBA (triangle de travail, surfaces de dépôt)
+  // données pour le validateur NKBA (triangle de travail, surfaces de dépôt,
+  // séparation des centres, dégagements, fenêtres)
   const nkbaInfo = {
     island: state.island,
-    placed: { evier: placed.evier, cuisiniere: placed.cuisiniere, frigo: placed.frigo },
+    stoveAuto: stoveIsAuto,
+    wanted: { frigo: state.appliances.fridge, dw: state.appliances.dw, cuisiniere: state.appliances.range },
+    placed: {
+      evier: placed.evier, cuisiniere: placed.cuisiniere,
+      frigo: placed.frigo, pantry: placed.pantry, dw: placed.dw,
+    },
     pts: {},
     spans: {},
+    wins: winsByWall,
   };
   for (const [k, p] of Object.entries(nkbaInfo.placed)) {
     if (p) nkbaInfo.pts[k] = toWorld(pointFor(p.wall, p.along, 0.3, 0));
