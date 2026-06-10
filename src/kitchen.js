@@ -1135,7 +1135,7 @@ export function buildKitchen(state) {
   // ——— dosseret (suit les comptoirs, continue derrière la cuisinière) ———
   const bsH = WALL_BOT - COUNTER_TOP;
   for (const wk of cabWalls) {
-    let spans = [[wk === 'back' ? 0.01 : COUNTER_D, wallLen[wk] - 0.01]];
+    let spans = [[0.01, wallLen[wk] - 0.01]]; // jusqu'au coin (murret) sur tous les murs
     for (const door of doorsByWall[wk]) spans = cut(spans, door.pos - door.width / 2 - 0.04, door.pos + door.width / 2 + 0.04);
     // REQ-801 : pas de dosseret (ni de pi² facturés) derrière les colonnes
     for (const tall of [placed.frigo, placed.pantry]) {
@@ -1207,8 +1207,8 @@ export function buildKitchen(state) {
     if (placed.cuisiniere && placed.cuisiniere.wall === wk && state.appliances.hood) {
       zones = cut(zones, placed.cuisiniere.along - 0.5, placed.cuisiniere.along + 0.5);
     }
-    if (placed.frigo && placed.frigo.wall === wk) zones = cut(zones, placed.frigo.along - placed.frigo.w / 2 - 0.03, placed.frigo.along + placed.frigo.w / 2 + 0.03);
-    if (placed.pantry && placed.pantry.wall === wk) zones = cut(zones, placed.pantry.along - placed.pantry.w / 2 - 0.03, placed.pantry.along + placed.pantry.w / 2 + 0.03);
+    if (placed.frigo && placed.frigo.wall === wk) zones = cut(zones, placed.frigo.along - placed.frigo.w / 2 - 0.004, placed.frigo.along + placed.frigo.w / 2 + 0.004);
+    if (placed.pantry && placed.pantry.wall === wk) zones = cut(zones, placed.pantry.along - placed.pantry.w / 2 - 0.004, placed.pantry.along + placed.pantry.w / 2 + 0.004);
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
       let cx = z0;
@@ -1257,12 +1257,12 @@ export function buildKitchen(state) {
     const AISLE = 1.06;
     const eL = (cabWalls.includes('left') ? 0.70 + AISLE : 0.30);
     const eR = a - (cabWalls.includes('right') ? 0.70 + AISLE : 0.30);
-    const availW = eR - eL - 0.16; // débords du comptoir
+    const availW = eR - eL - 0.08; // débords du comptoir (= épaisseur des cascades)
     const islD = 0.95;
     const islZ0 = BASE_D + AISLE;
     // largeur aimantée au pas de 3 po, bornée par l'espace réellement disponible
     const islW = Math.floor(Math.min(Math.max(a - 2.0, 1.5), 2.6, availW) / (3 * IN)) * 3 * IN;
-    const islX0 = eL + 0.08 + (availW - islW) / 2;
+    const islX0 = eL + 0.04 + (availW - islW) / 2;
     if (islW < 0.75) islandImpossible = true; // pas la place avec les allées minimales
     else {
     islandCenter = new THREE.Vector3(islX0 + islW / 2, 0.95, islZ0 + islD / 2);
@@ -1291,7 +1291,7 @@ export function buildKitchen(state) {
       plinthLin += slot.w;
       cx -= slot.w;
     });
-    islandRect = { x0: islX0 - 0.08, x1: islX0 + islW + 0.08, z0: islZ0 - 0.03, z1: islZ0 + islD + 0.07 };
+    islandRect = { x0: islX0 - 0.04, x1: islX0 + islW + 0.04, z0: islZ0 - 0.03, z1: islZ0 + islD + 0.07 };
     // REQ-709 : les panneaux d'îlot sont des produits facturés (arrière + habillage ×2)
     manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot');
     const skin = findSku('islandSkinPanel');
@@ -1300,13 +1300,13 @@ export function buildKitchen(state) {
     ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
-    const ct = box(islW + 0.16, COUNTER_T, islD + 0.1, counterMat, islCx, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2);
+    const ct = box(islW + 0.08, COUNTER_T, islD + 0.1, counterMat, islCx, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2);
     ig.add(ct);
     for (const s of [0, 1]) {
       ig.add(box(0.04, COUNTER_TOP, islD + 0.1, counterMat,
-        islX0 - 0.06 + s * (islW + 0.12), COUNTER_TOP / 2, islZ0 + (islD + 0.04) / 2));
+        islX0 - 0.02 + s * (islW + 0.04), COUNTER_TOP / 2, islZ0 + (islD + 0.04) / 2));
     }
-    manifest.counterArea += (islW + 0.16) * (islD + 0.1);
+    manifest.counterArea += (islW + 0.08) * (islD + 0.1);
     const nSt = islW > 2 ? 3 : 2;
     for (let i = 0; i < nSt; i++) {
       ig.add(D.stool(islCx + (i - (nSt - 1) / 2) * 0.62, islZ0 + islD + 0.28));
