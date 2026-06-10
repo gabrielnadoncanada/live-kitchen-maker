@@ -873,9 +873,54 @@ export function renderNkba(warnings) {
     .join('');
 }
 
-// positionne un popover près du point cliqué (desktop) ou en feuille basse
+// mobile : le drawer se ferme d'un swipe vers le bas (même geste que le wizard)
+let popDragReady = false;
+function setupPopoverDrag(pop) {
+  if (popDragReady) return;
+  popDragReady = true;
+  let drag = null;
+  const onDown = (e) => {
+    if (!window.matchMedia('(max-width: 860px)').matches) return;
+    drag = { y0: e.clientY, dy: 0, t0: performance.now() };
+    pop.style.transition = 'none';
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e) => {
+    if (!drag) return;
+    drag.dy = Math.max(0, e.clientY - drag.y0);
+    pop.style.transform = `translateY(${drag.dy}px)`;
+  };
+  const onUp = () => {
+    if (!drag) return;
+    const speed = drag.dy / Math.max(1, performance.now() - drag.t0);
+    const dismiss = drag.dy > 90 || speed > 0.55;
+    pop.style.transition = 'transform 0.22s ease';
+    if (dismiss) {
+      pop.style.transform = 'translateY(110%)';
+      setTimeout(() => {
+        hidePopover();
+        pop.style.transform = '';
+        pop.style.transition = '';
+      }, 200);
+    } else {
+      pop.style.transform = '';
+      setTimeout(() => { pop.style.transition = ''; }, 240);
+    }
+    drag = null;
+  };
+  for (const zone of [document.getElementById('popGrip'), document.getElementById('popoverTitle')]) {
+    if (!zone) continue;
+    zone.addEventListener('pointerdown', onDown);
+    zone.addEventListener('pointermove', onMove);
+    zone.addEventListener('pointerup', onUp);
+    zone.addEventListener('pointercancel', onUp);
+  }
+}
+
+// positionne un popover près du point cliqué (desktop) ou en drawer bas
 // plein-largeur (mobile) — où l'on pince aussi le sheet pour garder la 3D visible
 function placePopover(pop, x, y) {
+  setupPopoverDrag(pop);
   pop.hidden = false;
   if (window.matchMedia('(max-width: 860px)').matches) {
     pop.style.left = '';

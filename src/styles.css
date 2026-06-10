@@ -369,6 +369,7 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   animation: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 @keyframes pop { from { opacity: 0; transform: scale(0.9) translateY(6px); } }
+.pop-grip { display: none; } /* poignée du drawer — mobile seulement */
 .popover-title { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: rgba(var(--ink-rgb),.55); margin-bottom: 10px; padding-left: 2px; }
 .popover-opts { display: grid; gap: 5px; }
 .popover-opts button {
@@ -566,13 +567,22 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   .quote.collapsed .quote-label, .quote.collapsed .quote-monthly { display: none; }
   .quote.collapsed .quote-total { font-size: 19px; }
 
-  /* ——— popover module = feuille basse, le meuble reste visible ——— */
+  /* ——— popover module = drawer : poignée, swipe vers le bas pour fermer ——— */
   .popover {
     left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
-    border-radius: 20px 20px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    border-radius: 20px 20px 0 0; padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
     max-height: 52vh; overflow-y: auto;
     animation: sheetUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
+  .pop-grip {
+    display: grid; place-items: center;
+    padding: 4px 0 10px; touch-action: none; cursor: grab;
+  }
+  .pop-grip i {
+    width: 40px; height: 5px; border-radius: 999px;
+    background: rgba(var(--ink-rgb), 0.2);
+  }
+  .popover-title { touch-action: none; }
   .popover-opts button { padding: 12px 13px; }
   .pop-chips .chip { padding: 10px 14px; font-size: 13px; }
 

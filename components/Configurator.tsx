@@ -127,8 +127,11 @@ export default function Configurator() {
           </div>
         </aside>
 
-        {/* Popover d'édition de module */}
+        {/* Popover d'édition (drawer en mobile : poignée + swipe pour fermer) */}
         <div className="popover" id="popover" hidden>
+          <div className="pop-grip" id="popGrip" aria-hidden="true">
+            <i></i>
+          </div>
           <div className="popover-title" id="popoverTitle">
             Caisson
           </div>
