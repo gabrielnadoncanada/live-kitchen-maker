@@ -612,16 +612,18 @@ export function buildKitchen(state) {
     return new THREE.Vector3(r.x, y, r.z);
   }
 
-  // ——— pièce ———
-  const floor = box(a + 1.4, 0.06, roomD + 1.4, floorMat, a / 2, -0.03, roomD / 2);
+  // ——— pièce : les murs butent aux coins, le plancher suit l'enceinte ———
+  const exL = leftX - 0.06, exR = rightX + 0.06; // faces extérieures des murs latéraux
+  const floorZ0 = -0.12, floorZ1 = roomD + 0.25;  // sous le mur arrière → léger tablier avant
+  const floor = box(exR - exL, 0.06, floorZ1 - floorZ0, floorMat, (exL + exR) / 2, -0.03, (floorZ0 + floorZ1) / 2);
   floor.receiveShadow = true;
   floor.castShadow = false;
   inner.add(floor);
   const walls = [];
   const wallGroups = { back: new THREE.Group(), left: new THREE.Group(), right: new THREE.Group() };
-  const backWall = box(a + 1.4, ROOM_H, 0.12, wallMat, a / 2, ROOM_H / 2, -0.06);
-  const lWall = box(0.12, ROOM_H, roomD + 1.4, wallMat, leftX, ROOM_H / 2, roomD / 2);
-  const rWall = box(0.12, ROOM_H, roomD + 1.4, wallMat, rightX, ROOM_H / 2, roomD / 2);
+  const backWall = box(exR - exL, ROOM_H, 0.12, wallMat, (exL + exR) / 2, ROOM_H / 2, -0.06);
+  const lWall = box(0.12, ROOM_H, roomD + 0.12, wallMat, leftX, ROOM_H / 2, (roomD - 0.12) / 2);
+  const rWall = box(0.12, ROOM_H, roomD + 0.12, wallMat, rightX, ROOM_H / 2, (roomD - 0.12) / 2);
   backWall.castShadow = false; lWall.castShadow = false; rWall.castShadow = false;
   wallGroups.back.add(backWall);
   wallGroups.left.add(lWall);
@@ -630,9 +632,9 @@ export function buildKitchen(state) {
   walls.push({ group: wallGroups.back, point: new THREE.Vector3(0, 1, -roomD / 2), normal: new THREE.Vector3(0, 0, 1) });
   walls.push({ group: wallGroups.left, point: new THREE.Vector3(leftX - a / 2, 1, 0), normal: new THREE.Vector3(1, 0, 0) });
   walls.push({ group: wallGroups.right, point: new THREE.Vector3(rightX - a / 2, 1, 0), normal: new THREE.Vector3(-1, 0, 0) });
-  // plinthe du mur arrière
+  // plinthe du mur arrière (entre les faces intérieures des murs latéraux)
   const skirt = new THREE.MeshStandardMaterial({ color: '#efebe2', roughness: 0.7 });
-  wallGroups.back.add(box(a + 1.4, 0.09, 0.016, skirt, a / 2, 0.045, 0.008));
+  wallGroups.back.add(box(rightX - leftX - 0.12, 0.09, 0.016, skirt, (leftX + rightX) / 2, 0.045, 0.008));
 
   manifest.floorArea = a * roomD;
 
@@ -1246,13 +1248,23 @@ export function buildKitchen(state) {
   let islandCenter = null;
   let islandGroup = null;
   let islandRect = null;
+  let islandImpossible = false;
   if (state.island) {
-    // largeur aimantée au pas de 3 po : les modules d'îlot sont des caissons catalogue
-    const islW = Math.round(Math.min(Math.max(a - 2.0, 1.5), 2.6) / (3 * IN)) * 3 * IN;
+    // REQ-202 (NKBA 3) : l'allée de 1,06 m s'applique sur TOUS les côtés qui font
+    // face à des caissons — y compris les rubans latéraux (frigo qui avance de 70 cm)
+    const AISLE = 1.06;
+    const eL = (cabWalls.includes('left') ? 0.70 + AISLE : 0.30);
+    const eR = a - (cabWalls.includes('right') ? 0.70 + AISLE : 0.30);
+    const availW = eR - eL - 0.16; // débords du comptoir
     const islD = 0.95;
-    const islZ0 = BASE_D + 1.06;
-    const islX0 = (a - islW) / 2;
-    islandCenter = new THREE.Vector3(a / 2, 0.95, islZ0 + islD / 2);
+    const islZ0 = BASE_D + AISLE;
+    // largeur aimantée au pas de 3 po, bornée par l'espace réellement disponible
+    const islW = Math.floor(Math.min(Math.max(a - 2.0, 1.5), 2.6, availW) / (3 * IN)) * 3 * IN;
+    const islX0 = eL + 0.08 + (availW - islW) / 2;
+    if (islW < 0.75) islandImpossible = true; // pas la place avec les allées minimales
+    else {
+    islandCenter = new THREE.Vector3(islX0 + islW / 2, 0.95, islZ0 + islD / 2);
+    const islCx = islX0 + islW / 2; // l'îlot est centré dans son espace libre, pas dans la pièce
     const ig = new THREE.Group();
     const islSlots = catalogWidths(islW)
       .filter((p) => !p.filler)
@@ -1283,10 +1295,10 @@ export function buildKitchen(state) {
     const skin = findSku('islandSkinPanel');
     manifest.addSku(skin, 'Panneau d’habillage d’îlot');
     manifest.addSku(skin, 'Panneau d’habillage d’îlot');
-    ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, a / 2, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
+    ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
-    const ct = box(islW + 0.16, COUNTER_T, islD + 0.1, counterMat, a / 2, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2);
+    const ct = box(islW + 0.16, COUNTER_T, islD + 0.1, counterMat, islCx, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2);
     ig.add(ct);
     for (const s of [0, 1]) {
       ig.add(box(0.04, COUNTER_TOP, islD + 0.1, counterMat,
@@ -1295,16 +1307,17 @@ export function buildKitchen(state) {
     manifest.counterArea += (islW + 0.16) * (islD + 0.1);
     const nSt = islW > 2 ? 3 : 2;
     for (let i = 0; i < nSt; i++) {
-      ig.add(D.stool(a / 2 + (i - (nSt - 1) / 2) * 0.62, islZ0 + islD + 0.28));
+      ig.add(D.stool(islCx + (i - (nSt - 1) / 2) * 0.62, islZ0 + islD + 0.28));
     }
     const nP = islW > 2 ? 3 : 2;
     for (let i = 0; i < nP; i++) {
-      ig.add(D.pendant(a / 2 + (i - (nP - 1) / 2) * (islW / nP), 1.78, islZ0 + islD / 2));
+      ig.add(D.pendant(islCx + (i - (nP - 1) / 2) * (islW / nP), 1.78, islZ0 + islD / 2));
     }
-    ig.add(D.bowl(a / 2 - 0.4, COUNTER_TOP, islZ0 + islD / 2));
-    ig.add(D.board(a / 2 + 0.5, COUNTER_TOP, islZ0 + islD / 2, -0.25));
+    ig.add(D.bowl(islCx - 0.4, COUNTER_TOP, islZ0 + islD / 2));
+    ig.add(D.board(islCx + 0.5, COUNTER_TOP, islZ0 + islD / 2, -0.25));
     inner.add(ig);
     islandGroup = ig;
+    } // fin else (îlot possible)
   }
 
   // déco près de l'évier
@@ -1574,6 +1587,7 @@ export function buildKitchen(state) {
   // séparation des centres, dégagements, fenêtres)
   const nkbaInfo = {
     island: state.island,
+    islandImpossible,
     stoveAuto: stoveIsAuto,
     wanted: { frigo: state.appliances.fridge, dw: state.appliances.dw, cuisiniere: state.appliances.range },
     placed: {

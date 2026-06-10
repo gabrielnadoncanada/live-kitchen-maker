@@ -35,7 +35,7 @@ Sources :
 | ID | Requis | Prio | Statut |
 |----|--------|------|--------|
 | REQ-201 | **Triangle de travail** (NKBA 26) : chaque côté entre 4 et 9 pi (1,22–2,74 m), somme ≤ 26 pi (7,92 m). Afficher un avertissement doux si violé. | Moyenne | ✅ validateur doux — badge « recommandations d'ergonomie » |
-| REQ-202 | **Allées** (NKBA 3) : allée de travail ≥ 42 po (1,07 m) pour 1 cuisinier, 48 po pour 2 ; passage ≥ 36 po. | Haute | ✅ allée îlot fixée à 1,06 m |
+| REQ-202 | **Allées** (NKBA 3) : allée de travail ≥ 42 po (1,07 m) pour 1 cuisinier, 48 po pour 2 ; passage ≥ 36 po. | Haute | ✅ allée de 1,06 m appliquée sur tous les côtés de l'îlot (y compris face aux rubans latéraux) ; îlot retiré + avertissement si la pièce est trop étroite |
 | REQ-208 | **Lave-vaisselle** (NKBA 16) : à ≤ 36 po (91 cm) de l'évier, avec 21 po de dégagement debout de chaque côté (pas de colonne collée). | Haute | ✅ adjacence par le solveur + avertissement NKBA 16 sur le dégagement debout |
 | REQ-209 | **Séparation des centres de travail** (NKBA 12) : jamais de frigo, colonne ou four mural **entre** l'évier et la cuisinière. | Haute | ✅ zone interdite aux colonnes entre évier et cuisinière (solveur) + filet NKBA 12 |
 | REQ-210 | **Ventilation** (NKBA 24) : une hotte au-dessus de chaque cuisinière. | Haute | ✅ |

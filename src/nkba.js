@@ -37,6 +37,9 @@ export function computeNkbaWarnings(nkba) {
       }
     }
   }
+  if (nkba.islandImpossible) {
+    out.push({ id: 'PLACEMENT', msg: `Pas assez d'espace pour un îlot avec ses allées de 106 cm — élargissez la pièce ou retirez l'îlot.` });
+  }
 
   // ——— NKBA 26 : triangle de travail ———
   if (pts.evier && pts.cuisiniere && pts.frigo) {
