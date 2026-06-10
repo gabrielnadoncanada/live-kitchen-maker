@@ -131,7 +131,7 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     return g;
   }
 
-  g.add(box(w, PLINTH, BASE_D - 0.07, S.shadeBlack, w / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
+  g.add(box(w, PLINTH, BASE_D - 0.07, finish, w / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
 
   if (type === 'ouvert') {
     const t = 0.018;
@@ -269,7 +269,7 @@ function buildPantry(mats, manifest) {
   const g = new THREE.Group();
   const S = fixedMats();
   const W = PANTRY_W, D = PANTRY_D;
-  g.add(box(W, PLINTH, D - 0.07, S.shadeBlack, W / 2, PLINTH / 2, (D - 0.07) / 2));
+  g.add(box(W, PLINTH, D - 0.07, finish, W / 2, PLINTH / 2, (D - 0.07) / 2));
   g.add(box(W - 0.004, TALL_H - PLINTH, D - DOOR_T, finish, W / 2, PLINTH + (TALL_H - PLINTH) / 2, (D - DOOR_T) / 2));
   const zF = D - DOOR_T / 2;
   const h1 = (TALL_H - PLINTH) * 0.62, h2 = (TALL_H - PLINTH) * 0.38 - GAP * 2;
@@ -1069,14 +1069,14 @@ export function buildKitchen(state) {
     const x0 = mirror ? a - CORNER : 0;
     const sgn = mirror ? -1 : 1;
     const base = mirror ? a : 0;
-    cg.add(box(CORNER, PLINTH, BASE_D - 0.07, S.shadeBlack, base + sgn * CORNER / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
+    cg.add(box(CORNER, PLINTH, BASE_D - 0.07, finish, base + sgn * CORNER / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
     cg.add(box(CORNER, CARCASS_H, BASE_D - DOOR_T, finish, base + sgn * CORNER / 2, PLINTH + CARCASS_H / 2, (BASE_D - DOOR_T) / 2));
     const f = makeFront(CORNER - BASE_D - GAP, CARCASS_H - 0.01, finish, state.doorStyle);
     f.position.set(base + sgn * (BASE_D + (CORNER - BASE_D) / 2), PLINTH + CARCASS_H / 2, BASE_D - DOOR_T / 2);
     cg.add(f);
     cg.add(box(0.02, CARCASS_H, 0.3, finish, base + sgn * (BASE_D - 0.01), PLINTH + CARCASS_H / 2, BASE_D + 0.15));
     cg.add(box(BASE_D - 0.02, CARCASS_H, CORNER - BASE_D, finish, base + sgn * (BASE_D - 0.02) / 2, PLINTH + CARCASS_H / 2, BASE_D + (CORNER - BASE_D) / 2));
-    cg.add(box(BASE_D - 0.09, PLINTH, CORNER - BASE_D, S.shadeBlack, base + sgn * (BASE_D - 0.09) / 2, PLINTH / 2, BASE_D + (CORNER - BASE_D) / 2));
+    cg.add(box(BASE_D - 0.09, PLINTH, CORNER - BASE_D, finish, base + sgn * (BASE_D - 0.09) / 2, PLINTH / 2, BASE_D + (CORNER - BASE_D) / 2));
     inner.add(cg);
     const cs = findSku('baseCorner', Math.round(CORNER / IN));
     if (!manifest.addSku(cs, `Caisson de coin ${cs?.widthIn} po`)) manifest.add('base-coin');
