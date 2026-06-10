@@ -163,6 +163,57 @@ que détecter après coup ; la détection AABB généralisée reste le filet de 
 
 ---
 
+## 9. Audit visuel (2026-06-09) — écarts avec la réalité et l'attente client
+
+Constats d'un tour complet de la scène à hauteur d'yeux, en contre-plongée et aux zones de
+travail. Classés par impact sur la crédibilité.
+
+### Enveloppe de la pièce (les tueurs d'immersion)
+
+| ID | Requis | Prio | Statut |
+|----|--------|------|--------|
+| REQ-901 | **Plafond** : dès qu'on lève les yeux, la moitié de l'écran est un vide noir ; les cordons des suspensions et la cheminée de hotte montent dans le néant. Plafond blanc obligatoire (avec occlusion caméra façon « maison de poupée »). | **Critique** | ⬜ |
+| REQ-902 | **Éclairage au plafond** : aucun luminaire hors îlot — spots encastrés alignés sur les zones de travail, avec vraie contribution lumineuse. | Haute | ⬜ |
+| REQ-903 | **Vue par la fenêtre** : la vitre est un panneau lumineux uniforme — aucune profondeur. Un extérieur simple (ciel dégradé + silhouettes) changerait tout. | Haute | ⬜ |
+| REQ-904 | **Plinthes murales sur tous les murs** (uniquement le mur arrière actuellement). | Moyenne | ⬜ |
+| REQ-905 | **Prises et interrupteurs sur le dosseret** (code : prises aux 4 pi de comptoir) — le détail qui fait « vrai ». | Moyenne | ⬜ |
+
+### Produits catalogue absents du configurateur (mais vendus par Dilamco)
+
+| ID | Requis | Prio | Statut |
+|----|--------|------|--------|
+| REQ-906 | **Moulure couronne** en haut des armoires murales — au catalogue, demande client n°1 ; le haut des murales finit à nu. | Haute | ⬜ |
+| REQ-907 | **Valance lumineuse** sous les murales (cache la bande LED — produit moulure). | Basse | ⬜ |
+| REQ-908 | **Évier farmhouse** (FSBC33/36 au catalogue) + choix simple/double cuve + 2-3 styles de robinets. | Moyenne | ⬜ |
+| REQ-909 | **Panneau d'extrémité mural** (WEP) sur les bouts de murales exposés — l'équivalent haut de la fausse porte des bas. | Moyenne | ⬜ |
+| REQ-910 | **Sens des charnières** (porte gauche/droite) — information de commande réelle, sélectionnable au clic sur le module. | Basse | ⬜ |
+
+### Réalisme des matériaux
+
+| ID | Requis | Prio | Statut |
+|----|--------|------|--------|
+| REQ-911 | **Bois trop strié en gros plan** (effet tôle ondulée, surtout le noyer) : décaler les UV aléatoirement par porte, réduire le contraste du grain. | Haute | ⬜ |
+| REQ-912 | **Profil de chant du comptoir** (eased/bullnose) — les arêtes sont vives. | Basse | ⬜ |
+
+### Mise en scène (vendre le rêve)
+
+| ID | Requis | Prio | Statut |
+|----|--------|------|--------|
+| REQ-913 | **Staging enrichi** : vaisselle dans les niches, cafetière/petit électro, torchon, store ou rideau, tapis — la déco actuelle (plante + bol + planche) est trop maigre pour créer l'émotion. | Moyenne | ⬜ |
+
+### Expérience client (funnel)
+
+| ID | Requis | Prio | Statut |
+|----|--------|------|--------|
+| REQ-914 | **Sauvegarde/partage de la configuration** (lien) — le client revient, le vendeur rouvre le projet au rendez-vous ; le lead inclut le lien. | **Haute** | ⬜ |
+| REQ-915 | **Capture photo HD** de sa cuisine (bouton télécharger/partager) — marketing organique. | Moyenne | ⬜ |
+| REQ-916 | **Image de la cuisine dans le PDF** de devis. | Moyenne | ⬜ |
+| REQ-917 | **Cotes affichables en 3D** (toggle « dimensions »). | Basse | ⬜ |
+| REQ-918 | **Undo/redo**. | Moyenne | ⬜ |
+| REQ-919 | **Version anglaise** (marché bilingue). | Basse | ⬜ |
+
+---
+
 ## Processus
 
 1. Tout nouveau requis s'ajoute ici avec un ID, une priorité et le statut ⬜.
