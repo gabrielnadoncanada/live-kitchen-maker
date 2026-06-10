@@ -8,7 +8,7 @@ import { showMenu, hidePopover } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
 
 const round5 = (v) => Math.round(v * 20) / 20;
-const WALL_TITLES = { back: 'Mur principal', left: 'Mur gauche', right: 'Mur droit' };
+const WALL_TITLES = { back: 'Mur principal', left: 'Mur gauche', right: 'Mur droit', front: 'Mur avant' };
 
 export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
   let mode = 'ensemble';
@@ -74,6 +74,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
     for (const w of candidates) {
       let d, along;
       if (w === 'back') { d = Math.abs(pt.z); along = pt.x; }
+      else if (w === 'front') { d = Math.abs(pt.z - f.roomD); along = pt.x; }
       else if (w === 'left') { d = Math.abs(pt.x - f.planes.left); along = pt.z; }
       else { d = Math.abs(pt.x - f.planes.right); along = pt.z; }
       if (!best || d < best.d) best = { wall: w, d, along };
@@ -111,7 +112,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
   function moveOpening(id, e) {
     const o = state.constraints.openings.find((x) => x.id === id);
     if (!o) return;
-    const t = pointerTarget(e, ['back', 'left', 'right']);
+    const t = pointerTarget(e, state.layout === 'galley' ? ['back', 'left', 'right', 'front'] : ['back', 'left', 'right']);
     if (!t) return;
     // anti-chevauchement : la fenêtre/porte s'arrête au bord de sa voisine
     const pos = resolveOpeningPos(state, t.wall, o.width, t.along, id);
@@ -141,6 +142,11 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
       return;
     }
     const wz = pt.z - f.roomD / 2;
+    // en couloir, b EST la profondeur de la pièce : le mur avant suit le curseur
+    if (state.layout === 'galley' && dim === 'b') {
+      setState({ dims: { b: Math.min(Math.max(round5(2 * wz), 2.6), 4.6) } });
+      return;
+    }
     const island = state.island;
     const other = dim === 'b' ? (state.layout === 'u' ? state.dims.c : 0) : state.dims.b;
     const rMin = Math.max(3.5, island ? 4.15 : 3.5, other + 0.7);
@@ -240,7 +246,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
         onPick: () => setState({ constraints: { stove: { auto: false, wall: wallKey, pos: round5(clampAlong(wallKey, along, 0.77, f)) } } }),
       });
     }
-    if (!elevWall) {
+    if (!elevWall && wallKey !== 'front') {
       opts.push({ ico: '👁', label: 'Voir ce mur de face', onPick: () => enterElevation(wallKey) });
     }
     if (opts.length) showMenu(e.clientX, e.clientY, `${WALL_TITLES[wallKey]}${elevWall ? '' : ''}`, opts);

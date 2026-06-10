@@ -2,9 +2,11 @@
 const listeners = new Set();
 
 export const state = {
-  layout: 'l',            // 'lineaire' | 'l' | 'u'
+  layout: 'l',            // 'lineaire' | 'l' | 'u' | 'galley' (REQ-1005)
   island: true,
-  dims: { a: 4.4, b: 3.2, c: 3.0 },
+  islandMode: 'libre',    // 'libre' | 'peninsule' — rattachée au mur droit (REQ-1005)
+  islandFeature: 'aucun', // 'aucun' | 'evier' | 'plaque' — fonction de l'îlot (REQ-1006)
+  dims: { a: 4.4, b: 3.2, c: 3.0 },  // en galley, b = profondeur du corridor
   ceiling: 9,             // hauteur de plafond en pieds : 8 | 9 | 10
   // contraintes réelles de la pièce
   constraints: {

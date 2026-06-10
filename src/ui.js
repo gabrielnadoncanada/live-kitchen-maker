@@ -119,17 +119,23 @@ function switchRow(label, sub, get, set) {
 }
 
 // ————————————— contraintes de la pièce —————————————
-const WALL_LABELS = { back: 'Mur principal', left: 'Mur gauche', right: 'Mur droit' };
-const WALL_SHORT = { back: 'Principal', left: 'Gauche', right: 'Droit' };
+const WALL_LABELS = { back: 'Mur principal', left: 'Mur gauche', right: 'Mur droit', front: 'Mur avant' };
+const WALL_SHORT = { back: 'Principal', left: 'Gauche', right: 'Droit', front: 'Avant' };
 
 function cabWallsOf(s) {
-  return s.layout === 'u' ? ['back', 'left', 'right'] : s.layout === 'l' ? ['back', 'left'] : ['back'];
+  return s.layout === 'galley' ? ['back', 'front']
+    : s.layout === 'u' ? ['back', 'left', 'right']
+    : s.layout === 'l' ? ['back', 'left'] : ['back'];
+}
+// murs disponibles pour les fenêtres et portes selon la forme
+function openingWallsOf(s) {
+  return s.layout === 'galley' ? ['back', 'left', 'right', 'front'] : ['back', 'left', 'right'];
 }
 const wallLenOf = wallLenShared;
 
 function wallChips(getWall, setWall, getAvail) {
   const wrap = el('<div class="chips"></div>');
-  for (const k of ['back', 'left', 'right']) {
+  for (const k of ['back', 'left', 'right', 'front']) {
     const chip = el(`<button class="chip" data-k="${k}">${WALL_SHORT[k]}</button>`);
     chip.addEventListener('click', () => setWall(k));
     wrap.append(chip);
@@ -219,7 +225,7 @@ function openingsEditor(type, title, addLabel, widthMin, widthMax, defWidth, max
   wrap.append(list, addBtn);
   addBtn.addEventListener('click', () => {
     // premier emplacement libre parmi les murs, à partir du centre
-    for (const wall of ['back', 'left', 'right']) {
+    for (const wall of openingWallsOf(state)) {
       const pos = resolveOpeningPos(state, wall, defWidth, wallLenOf(state, wall) / 2);
       if (pos == null) continue;
       setState({
@@ -253,7 +259,7 @@ function openingsEditor(type, title, addLabel, widthMin, widthMax, defWidth, max
           const p = resolveOpeningPos(state, w, cur.width, cur.pos, o.id);
           if (p != null) patchOpening(o.id, { wall: w, pos: p }); // sinon : pas de place sur ce mur
         },
-        () => ['back', 'left', 'right']
+        (s) => openingWallsOf(s)
       );
       const pos = miniSlider('Position', 0.4, 6, 0.05, (s) => find(s).pos, (v) => {
         const cur = find(state);
@@ -297,6 +303,7 @@ export function buildPanel() {
     ['lineaire', 'Linéaire', '<rect x="6" y="6" width="36" height="9" rx="2"/>'],
     ['l', 'En L', '<path d="M6 6h36v9H15v21H6z"/>'],
     ['u', 'En U', '<path d="M6 6h36v30h-9V15H15v21H6z"/>'],
+    ['galley', 'Couloir', '<rect x="6" y="6" width="36" height="9" rx="2"/><rect x="6" y="27" width="36" height="9" rx="2"/>'],
   ];
   for (const [key, label, path] of shapeDefs) {
     const card = el(`<button class="shape-card" data-k="${key}">
@@ -314,7 +321,25 @@ export function buildPanel() {
   }
   updaters.push((s) => shapes.querySelectorAll('.shape-card').forEach((b) => b.classList.toggle('active', b.dataset.k === s.layout)));
   s1.append(shapes);
-  s1.append(switchRow('Îlot central', 'Comptoir cascade + tabourets + suspensions', (s) => s.island, (v) => setState({ island: v })));
+  const islRow = switchRow('Îlot central', 'Comptoir cascade + tabourets + suspensions', (s) => s.island, (v) => setState({ island: v }));
+  s1.append(islRow);
+  // REQ-1005/1006 : type d'îlot (libre / péninsule) et fonction (rangement / évier / cuisson)
+  const islOpts = el('<div class="fixture-detail"></div>');
+  islOpts.append(el('<div class="swatch-label"><span>Type d’îlot</span></div>'));
+  islOpts.append(segmented(
+    [['libre', 'Îlot libre'], ['peninsule', 'Péninsule']],
+    (s) => s.islandMode || 'libre', (k) => setState({ islandMode: k })
+  ));
+  islOpts.append(el('<div class="swatch-label" style="margin-top:10px"><span>Fonction de l’îlot</span></div>'));
+  islOpts.append(segmented(
+    [['aucun', 'Rangement'], ['evier', 'Évier'], ['plaque', 'Cuisson']],
+    (s) => s.islandFeature || 'aucun', (k) => setState({ islandFeature: k })
+  ));
+  s1.append(islOpts);
+  updaters.push((s) => {
+    islRow.style.display = s.layout === 'galley' ? 'none' : '';
+    islOpts.style.display = s.island && s.layout !== 'galley' ? '' : 'none';
+  });
   root.append(s1);
 
   // 2 · DIMENSIONS
@@ -327,6 +352,8 @@ export function buildPanel() {
     slB.style.display = s.layout !== 'lineaire' ? '' : 'none';
     slC.style.display = s.layout === 'u' ? '' : 'none';
     slA._input.min = s.layout === 'u' ? 4.3 : 3.4;
+    // en couloir, b devient la profondeur de la pièce (REQ-1005)
+    slB.querySelector('.lab b').textContent = s.layout === 'galley' ? 'Profondeur du corridor' : 'Mur gauche';
   });
   // REQ-708 : hauteur de plafond
   s2.append(el('<div class="swatch-label"><span>Hauteur de plafond</span></div>'));

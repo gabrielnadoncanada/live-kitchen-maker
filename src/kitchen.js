@@ -440,6 +440,20 @@ function buildMicroHood(applianceMat, matsUpper, manifest) {
   return g;
 }
 
+// ——— hotte d'îlot (REQ-1006) — suspendue au plafond au-dessus de la plaque,
+// centrée sur x=0/z=0 ———
+function buildIslandHood(steel) {
+  const S = fixedMats();
+  const g = new THREE.Group();
+  g.add(box(0.9, 0.06, 0.55, steel, 0, WALL_BOT + 0.2, 0));
+  g.add(box(0.55, 0.18, 0.34, steel, 0, WALL_BOT + 0.32, 0));
+  g.add(box(0.3, ROOM_H - (WALL_BOT + 0.41), 0.3, steel, 0, (WALL_BOT + 0.41 + ROOM_H) / 2, 0));
+  const lamp = box(0.7, 0.006, 0.4, S.glow, 0, WALL_BOT + 0.168, 0);
+  lamp.castShadow = false;
+  g.add(lamp);
+  return g;
+}
+
 // ——— armoire murale ———
 function buildWallCab(w, mats, manifest, widthIn = null) {
   const { finish, handleKind, handleMat, doorStyle, zone = 'base' } = mats;
@@ -709,10 +723,15 @@ export function buildKitchen(state) {
   const inner = new THREE.Group();
   root.add(inner);
 
+  // REQ-1005 : forme « couloir » (galley) — deux rangées parallèles, b = profondeur
+  const galley = state.layout === 'galley';
   const a = state.dims.a;
   const b = state.layout !== 'lineaire' ? state.dims.b : 0;
   const c = state.layout === 'u' ? state.dims.c : 0;
-  const roomD = Math.max(3.5, state.island ? 4.15 : 3.5, b + 0.7, c + 0.7);
+  const wantIsland = state.island && !galley; // pas d'îlot dans un couloir
+  const roomD = galley
+    ? Math.max(2.6, b)
+    : Math.max(3.5, wantIsland ? 4.15 : 3.5, b + 0.7, c + 0.7);
 
   const finish = CABINET_FINISHES[state.cabinetFinish].make();
   const islandFinish = CABINET_FINISHES[state.islandFinish || state.cabinetFinish].make();
@@ -730,17 +749,21 @@ export function buildKitchen(state) {
   const matsUpper = { ...mats, finish: upFinish, zone: 'upper' };
 
   // ——— murs porteurs de caissons selon la forme ———
-  const cabWalls = state.layout === 'u' ? ['back', 'left', 'right'] : state.layout === 'l' ? ['back', 'left'] : ['back'];
-  const leftX = state.layout !== 'lineaire' ? -0.06 : -0.66;
+  const cabWalls = galley ? ['back', 'front']
+    : state.layout === 'u' ? ['back', 'left', 'right']
+    : state.layout === 'l' ? ['back', 'left'] : ['back'];
+  const leftX = state.layout === 'l' || state.layout === 'u' ? -0.06 : -0.66;
   const rightX = state.layout === 'u' ? a + 0.06 : a + 0.66;
   // plan de chaque mur (face intérieure) + longueur utile pour les ouvertures
   const wallPlane = { back: { type: 'z', at: 0 }, left: { type: 'x', at: leftX + 0.06 }, right: { type: 'x', at: rightX - 0.06 } };
-  const wallLen = { back: a, left: cabWalls.includes('left') ? b : roomD, right: cabWalls.includes('right') ? c : roomD };
+  if (galley) wallPlane.front = { type: 'z', at: roomD };
+  const wallLen = { back: a, front: a, left: cabWalls.includes('left') ? b : roomD, right: cabWalls.includes('right') ? c : roomD };
 
   // transforme (mur, position le long, profondeur depuis le mur) -> coords pièce
   function rectFor(wallKey, al0, al1, d0, d1) {
     const w = al1 - al0, dd = d1 - d0;
     if (wallKey === 'back') return { x: (al0 + al1) / 2, z: (d0 + d1) / 2, sx: w, sz: dd };
+    if (wallKey === 'front') return { x: (al0 + al1) / 2, z: wallPlane.front.at - (d0 + d1) / 2, sx: w, sz: dd };
     const px = wallPlane[wallKey].at;
     if (wallKey === 'left') return { x: px + (d0 + d1) / 2, z: (al0 + al1) / 2, sx: dd, sz: w };
     return { x: px - (d0 + d1) / 2, z: (al0 + al1) / 2, sx: dd, sz: w };
@@ -755,12 +778,14 @@ export function buildKitchen(state) {
   // placement d'un module (origine = bord proche du coin arrière)
   function modulePlacement(wallKey, along0, w, y = 0) {
     if (wallKey === 'back') return { pos: new THREE.Vector3(along0, y, 0), rotY: 0 };
+    if (wallKey === 'front') return { pos: new THREE.Vector3(along0 + w, y, wallPlane.front.at), rotY: Math.PI };
     if (wallKey === 'left') return { pos: new THREE.Vector3(wallPlane.left.at, y, along0 + w), rotY: Math.PI / 2 };
     return { pos: new THREE.Vector3(wallPlane.right.at, y, along0), rotY: -Math.PI / 2 };
   }
   // placement d'un élément symétrique centré (fenêtre, porte, hotte, évier)
   function centeredPlacement(wallKey, along, y = 0) {
     if (wallKey === 'back') return { pos: new THREE.Vector3(along, y, 0), rotY: 0 };
+    if (wallKey === 'front') return { pos: new THREE.Vector3(along, y, wallPlane.front.at), rotY: Math.PI };
     if (wallKey === 'left') return { pos: new THREE.Vector3(wallPlane.left.at, y, along), rotY: Math.PI / 2 };
     return { pos: new THREE.Vector3(wallPlane.right.at, y, along), rotY: -Math.PI / 2 };
   }
@@ -771,13 +796,13 @@ export function buildKitchen(state) {
 
   // ——— pièce : les murs butent aux coins, le plancher suit l'enceinte ———
   const exL = leftX - 0.06, exR = rightX + 0.06; // faces extérieures des murs latéraux
-  const floorZ0 = -0.12, floorZ1 = roomD + 0.25;  // sous le mur arrière → léger tablier avant
+  const floorZ0 = -0.12, floorZ1 = galley ? roomD + 0.12 : roomD + 0.25; // tablier avant sauf en couloir
   const floor = box(exR - exL, 0.06, floorZ1 - floorZ0, floorMat, (exL + exR) / 2, -0.03, (floorZ0 + floorZ1) / 2);
   floor.receiveShadow = true;
   floor.castShadow = false;
   inner.add(floor);
   const walls = [];
-  const wallGroups = { back: new THREE.Group(), left: new THREE.Group(), right: new THREE.Group() };
+  const wallGroups = { back: new THREE.Group(), left: new THREE.Group(), right: new THREE.Group(), front: new THREE.Group() };
   const backWall = box(exR - exL, ROOM_H, 0.12, wallMat, (exL + exR) / 2, ROOM_H / 2, -0.06);
   const lWall = box(0.12, ROOM_H, roomD + 0.12, wallMat, leftX, ROOM_H / 2, (roomD - 0.12) / 2);
   const rWall = box(0.12, ROOM_H, roomD + 0.12, wallMat, rightX, ROOM_H / 2, (roomD - 0.12) / 2);
@@ -785,20 +810,29 @@ export function buildKitchen(state) {
   wallGroups.back.add(backWall);
   wallGroups.left.add(lWall);
   wallGroups.right.add(rWall);
-  inner.add(wallGroups.back, wallGroups.left, wallGroups.right);
+  inner.add(wallGroups.back, wallGroups.left, wallGroups.right, wallGroups.front);
   walls.push({ group: wallGroups.back, point: new THREE.Vector3(0, 1, -roomD / 2), normal: new THREE.Vector3(0, 0, 1) });
   walls.push({ group: wallGroups.left, point: new THREE.Vector3(leftX - a / 2, 1, 0), normal: new THREE.Vector3(1, 0, 0) });
   walls.push({ group: wallGroups.right, point: new THREE.Vector3(rightX - a / 2, 1, 0), normal: new THREE.Vector3(-1, 0, 0) });
   // plinthe du mur arrière (entre les faces intérieures des murs latéraux)
   const skirt = new THREE.MeshStandardMaterial({ color: '#efebe2', roughness: 0.7 });
   wallGroups.back.add(box(rightX - leftX - 0.12, 0.09, 0.016, skirt, (leftX + rightX) / 2, 0.045, 0.008));
+  // REQ-1005 : mur avant du couloir — masqué par la « maison de poupée » quand
+  // la caméra est devant (position par défaut)
+  if (galley) {
+    const fWall = box(exR - exL, ROOM_H, 0.12, wallMat, (exL + exR) / 2, ROOM_H / 2, roomD + 0.06);
+    fWall.castShadow = false;
+    wallGroups.front.add(fWall);
+    wallGroups.front.add(box(rightX - leftX - 0.12, 0.09, 0.016, skirt, (leftX + rightX) / 2, 0.045, roomD - 0.008));
+    walls.push({ group: wallGroups.front, point: new THREE.Vector3(0, 1, roomD / 2), normal: new THREE.Vector3(0, 0, -1) });
+  }
 
   manifest.floorArea = a * roomD;
 
   // ——— contraintes : ouvertures par mur ———
   const openings = (state.constraints && state.constraints.openings) || [];
-  const doorsByWall = { back: [], left: [], right: [] };
-  const winsByWall = { back: [], left: [], right: [] };
+  const doorsByWall = { back: [], left: [], right: [], front: [] };
+  const winsByWall = { back: [], left: [], right: [], front: [] };
   for (const o of openings) {
     if (!wallPlane[o.wall]) continue;
     const maxAl = wallLen[o.wall];
@@ -808,7 +842,7 @@ export function buildKitchen(state) {
   }
 
   // dessine fenêtres et portes (accrochées au groupe de leur mur pour le masquage)
-  for (const wallKey of ['back', 'left', 'right']) {
+  for (const wallKey of ['back', 'left', 'right', 'front']) {
     for (const win of winsByWall[wallKey]) {
       const wg = buildWindow(win.width);
       const p = centeredPlacement(wallKey, win.pos);
@@ -826,13 +860,16 @@ export function buildKitchen(state) {
   }
 
   // ——— segments libres pour les caissons (coins et portes retranchés) ———
-  const hasCornerL = state.layout !== 'lineaire';
+  const hasCornerL = state.layout === 'l' || state.layout === 'u';
   const hasCornerR = state.layout === 'u';
   function cabSegments(wallKey) {
     let lo, hi;
     if (wallKey === 'back') {
       lo = hasCornerL ? CORNER : 0.02;
       hi = hasCornerR ? a - CORNER : a - 0.02;
+    } else if (wallKey === 'front') {
+      lo = 0.02;                 // les deux rangées d'un couloir n'ont pas de coin
+      hi = a - 0.02;
     } else {
       lo = CORNER;
       hi = wallLen[wallKey] - 0.02;
@@ -859,6 +896,33 @@ export function buildKitchen(state) {
     const segs = segsByWall[wallKey] || [];
     return segs.reduce((best, s) => (!best || s[1] - s[0] > best[1] - best[0] ? s : best), null);
   }
+
+  // ——— géométrie d'îlot / péninsule (REQ-1005/1006) — calculée tôt : l'évier ou
+  // la plaque d'îlot retire l'appareil correspondant des murs ———
+  // REQ-202 (NKBA 3) : l'allée de 1,06 m s'applique sur TOUS les côtés qui font
+  // face à des caissons — y compris les rubans latéraux (frigo qui avance de 70 cm)
+  const AISLE = 1.06;
+  const islD = 0.95;
+  const islZ0 = BASE_D + AISLE;
+  // péninsule : rattachée au mur droit — seulement s'il ne porte pas de caissons
+  const peninsula = wantIsland && (state.islandMode || 'libre') === 'peninsule' && !cabWalls.includes('right');
+  let islW = 0, islX0 = 0;
+  let islandImpossible = false;
+  if (wantIsland) {
+    const eL = (cabWalls.includes('left') ? 0.70 + AISLE : 0.30);
+    if (peninsula) {
+      const x1 = wallPlane.right.at;
+      islW = Math.floor(Math.min(Math.max(a - 2.0, 1.5), 2.8, x1 - eL - 0.04) / (3 * IN)) * 3 * IN;
+      islX0 = x1 - islW;
+    } else {
+      const eR = a - (cabWalls.includes('right') ? 0.70 + AISLE : 0.30);
+      const availW = eR - eL - 0.08; // débords du comptoir (= épaisseur des cascades)
+      islW = Math.floor(Math.min(Math.max(a - 2.0, 1.5), 2.6, availW) / (3 * IN)) * 3 * IN;
+      islX0 = eL + 0.04 + (availW - islW) / 2;
+    }
+    if (islW < 0.75) islandImpossible = true; // pas la place avec les allées minimales
+  }
+  const islFeature = wantIsland && !islandImpossible ? (state.islandFeature || 'aucun') : 'aucun';
 
   // ——— résolution des positions imposées (eau, cuisinière, frigo) ———
   const cons = state.constraints || {};
@@ -898,16 +962,21 @@ export function buildKitchen(state) {
     || [...cabWalls].reverse().find((w) => largestSeg(w)) || 'back';
 
   // ——— items fixes par mur, puis résolution segment par segment ———
-  const fixedByWall = { back: [], left: [], right: [] };
+  const fixedByWall = { back: [], left: [], right: [], front: [] };
   function addFixed(wallKey, type, w, want, prio, tall = false) {
     fixedByWall[wallKey].push({ type, w, want, prio, tall });
   }
   // REQ-1004 : en mode « four mural », la cuisinière devient une plaque de cuisson
   // (même position 240 V) et une colonne four rejoint la banque de colonnes
   const cookingMural = (state.cooking || 'cuisiniere') === 'mural';
-  addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
-  if (state.appliances.dw) addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
-  if (state.appliances.range) addFixed(stoveWall, cookingMural ? 'plaque' : 'cuisiniere', RANGE_W, stoveAlong, 2);
+  // REQ-1006 : l'évier (et son lave-vaisselle) ou la cuisson peuvent vivre dans l'îlot
+  if (islFeature !== 'evier') {
+    addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
+    if (state.appliances.dw) addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
+  }
+  if (state.appliances.range && islFeature !== 'plaque') {
+    addFixed(stoveWall, cookingMural ? 'plaque' : 'cuisiniere', RANGE_W, stoveAlong, 2);
+  }
   if (state.appliances.fridge) {
     const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
     if (endSeg) {
@@ -998,7 +1067,7 @@ export function buildKitchen(state) {
     }
     return catalogWidths(len);
   }
-  const placedIntervals = { back: [], left: [], right: [] }; // REQ-803 : filet AABB
+  const placedIntervals = { back: [], left: [], right: [], front: [] }; // REQ-803 : filet AABB
   let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
 
   function layWall(wallKey) {
@@ -1301,7 +1370,7 @@ export function buildKitchen(state) {
   // ——— comptoirs (segments, trous d'évier, retrait cuisinière et portes) ———
   function counterSpans(wallKey) {
     let lo, hi;
-    if (wallKey === 'back') { lo = 0; hi = a; }
+    if (wallKey === 'back' || wallKey === 'front') { lo = 0; hi = a; }
     else { lo = COUNTER_D + 0.002; hi = wallLen[wallKey]; }
     let spans = [[lo, hi]];
     for (const door of doorsByWall[wallKey]) spans = cut(spans, door.pos - door.width / 2 - 0.04, door.pos + door.width / 2 + 0.04);
@@ -1406,6 +1475,9 @@ export function buildKitchen(state) {
     if (wk === 'back') {
       upLo = hasCornerL ? (wbcL ? 0.02 + WBC_W + 0.004 : WALL_CAB_D + 0.04) : 0.02;
       upHi = hasCornerR ? (wbcR ? a - 0.02 - WBC_W - 0.004 : a - WALL_CAB_D - 0.04) : a - 0.02;
+    } else if (wk === 'front') {
+      upLo = 0.02;
+      upHi = a - 0.02;
     } else {
       // bute contre le flanc du coin aveugle (prof. 35 cm + jeu de filler)
       upLo = WALL_CAB_D + 0.04;
@@ -1449,38 +1521,12 @@ export function buildKitchen(state) {
     }
   }
 
-  // ——— hotte : cheminée ou micro-hotte combinée (REQ-1003) ———
-  if (state.appliances.hood && placed.cuisiniere) {
-    const micro = (state.hoodType || 'cheminee') === 'micro';
-    const hood = micro ? buildMicroHood(applianceMat, matsUpper, manifest) : buildHood(applianceMat);
-    const p = centeredPlacement(placed.cuisiniere.wall, placed.cuisiniere.along);
-    hood.position.copy(p.pos);
-    hood.rotation.y = p.rotY;
-    inner.add(hood);
-    manifest.appliances.hood = true;
-    if (!micro) manifest.add('hotte-coffrage');
-  }
-
-  // ——— îlot ———
+  // ——— îlot / péninsule (géométrie résolue plus haut) ———
   const D = decor(S);
   let islandCenter = null;
   let islandGroup = null;
   let islandRect = null;
-  let islandImpossible = false;
-  if (state.island) {
-    // REQ-202 (NKBA 3) : l'allée de 1,06 m s'applique sur TOUS les côtés qui font
-    // face à des caissons — y compris les rubans latéraux (frigo qui avance de 70 cm)
-    const AISLE = 1.06;
-    const eL = (cabWalls.includes('left') ? 0.70 + AISLE : 0.30);
-    const eR = a - (cabWalls.includes('right') ? 0.70 + AISLE : 0.30);
-    const availW = eR - eL - 0.08; // débords du comptoir (= épaisseur des cascades)
-    const islD = 0.95;
-    const islZ0 = BASE_D + AISLE;
-    // largeur aimantée au pas de 3 po, bornée par l'espace réellement disponible
-    const islW = Math.floor(Math.min(Math.max(a - 2.0, 1.5), 2.6, availW) / (3 * IN)) * 3 * IN;
-    const islX0 = eL + 0.04 + (availW - islW) / 2;
-    if (islW < 0.75) islandImpossible = true; // pas la place avec les allées minimales
-    else {
+  if (wantIsland && !islandImpossible) {
     islandCenter = new THREE.Vector3(islX0 + islW / 2, 0.95, islZ0 + islD / 2);
     const islCx = islX0 + islW / 2; // l'îlot est centré dans son espace libre, pas dans la pièce
     const ig = new THREE.Group();
@@ -1494,42 +1540,93 @@ export function buildKitchen(state) {
     const islSlots = islPieces
       .filter((p) => !p.filler)
       .map((p, i) => ({ w: p.w, widthIn: p.widthIn, type: p.planType || (i % 2 ? 'portes' : 'tiroirs'), gapIndex: i }));
+    // REQ-1006 : l'évier (ou la plaque) occupe le module le plus central ;
+    // le lave-vaisselle prend le module voisin
+    if (islFeature !== 'aucun' && islSlots.length) {
+      let cxx = islX0 + islW;
+      const centers = islSlots.map((s2) => { const ce = cxx - s2.w / 2; cxx -= s2.w; return ce; });
+      let mid = 0, bd = Infinity;
+      centers.forEach((ce, i) => { const d2 = Math.abs(ce - islCx); if (d2 < bd) { bd = d2; mid = i; } });
+      islSlots[mid].type = islFeature === 'evier' ? 'evier' : 'plaque';
+      islSlots[mid].fixed = true;
+      if (islFeature === 'evier' && state.appliances.dw) {
+        const di = mid + 1 < islSlots.length ? mid + 1 : mid - 1;
+        if (di >= 0) { islSlots[di].type = 'lavevaisselle'; islSlots[di].fixed = true; }
+      }
+    }
     gapComps['isl'] = { totalIn: islW / IN, widths: islSlots.map((s2) => s2.widthIn), types: islSlots.map((s2) => s2.type), exact: true };
     let cx = islX0 + islW;
     islSlots.forEach((slot, i) => {
       const id = `isl:${i}`;
       const type = slot.type;
+      const center = cx - slot.w / 2;
       const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
       ig.add(g);
-      const hit = new THREE.Mesh(
-        new THREE.BoxGeometry(slot.w, CARCASS_H + PLINTH, BASE_D),
-        new THREE.MeshBasicMaterial({ visible: false })
-      );
-      hit.position.set(slot.w / 2, (CARCASS_H + PLINTH) / 2, BASE_D / 2);
-      hit.userData = {
-        editable: true, moduleId: id, current: type, width: slot.w,
-        widthIn: slot.widthIn, gapKey: 'isl', gapIndex: i,
-      };
-      g.add(hit);
-      editables.push(hit);
+      if (type === 'evier') {
+        placed.evier = { wall: 'isl', isl: true, x: center, z: islZ0 + 0.3, along: center, w: slot.w };
+      } else if (type === 'lavevaisselle') {
+        manifest.appliances.dw = true;
+        placed.dw = { wall: 'isl', isl: true, x: center, z: islZ0 + 0.3, along: center, w: slot.w };
+      } else if (type === 'plaque') {
+        manifest.appliances.range = true;
+        placed.cuisiniere = { wall: 'isl', isl: true, x: center, z: islZ0 + 0.27, along: center, w: slot.w, plaque: true };
+      }
+      if (!slot.fixed) {
+        const hit = new THREE.Mesh(
+          new THREE.BoxGeometry(slot.w, CARCASS_H + PLINTH, BASE_D),
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hit.position.set(slot.w / 2, (CARCASS_H + PLINTH) / 2, BASE_D / 2);
+        hit.userData = {
+          editable: true, moduleId: id, current: type, width: slot.w,
+          widthIn: slot.widthIn, gapKey: 'isl', gapIndex: i,
+        };
+        g.add(hit);
+        editables.push(hit);
+      }
       manifest.islandModules++;
       plinthLin += slot.w;
       cx -= slot.w;
     });
+    // évier d'îlot : cuve + robinet tournés vers le côté repas
+    if (islFeature === 'evier' && placed.evier && placed.evier.isl) {
+      const sg = buildSink();
+      sg.rotation.y = Math.PI;
+      sg.position.set(placed.evier.x, 0, placed.evier.z + 0.32);
+      ig.add(sg);
+    }
     islandRect = { x0: islX0 - 0.04, x1: islX0 + islW + 0.04, z0: islZ0 - 0.03, z1: islZ0 + islD + 0.07 };
-    // REQ-709 : les panneaux d'îlot sont des produits facturés (arrière + habillage ×2)
+    // REQ-709 : les panneaux d'îlot sont des produits facturés
+    // (péninsule : un seul bout exposé → un seul panneau d'habillage)
     manifest.addSku(findSku('islandBackPanel', 96), 'Panneau arrière d’îlot', { zone: 'island' });
     const skin = findSku('islandSkinPanel');
     manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
-    manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
+    if (!peninsula) manifest.addSku(skin, 'Panneau d’habillage d’îlot', { zone: 'island' });
     ig.add(scaleUV(box(islW, CARCASS_H + PLINTH, 0.02, islandFinish, islCx, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D + 0.01), islW / 0.55));
     ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
-    ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
-    const ct = box(islW + 0.08, COUNTER_T, islD + 0.1, counterMat, islCx, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2);
-    ig.add(ct);
-    for (const s of [0, 1]) {
+    if (!peninsula) {
+      ig.add(box(0.02, CARCASS_H + PLINTH, BASE_D + 0.02, islandFinish, islX0 + islW - 0.01, (CARCASS_H + PLINTH) / 2, islZ0 + BASE_D / 2));
+    }
+    // comptoir — troué autour de la cuve quand l'évier vit dans l'îlot
+    if (islFeature === 'evier' && placed.evier && placed.evier.isl) {
+      const cx0 = islX0 - 0.04, cx1 = islX0 + islW + 0.04;
+      const cz0 = islZ0 - 0.03, cz1 = islZ0 + islD + 0.07;
+      const hx0 = placed.evier.x - 0.28, hx1 = placed.evier.x + 0.28;
+      const hz0 = placed.evier.z - 0.22, hz1 = placed.evier.z + 0.22;
+      const ctY = COUNTER_H + COUNTER_T / 2;
+      for (const [x0, x1, z0, z1] of [
+        [cx0, hx0, cz0, cz1], [hx1, cx1, cz0, cz1], [hx0, hx1, cz0, hz0], [hx0, hx1, hz1, cz1],
+      ]) {
+        if (x1 - x0 < 0.01 || z1 - z0 < 0.01) continue;
+        ig.add(box(x1 - x0, COUNTER_T, z1 - z0, counterMat, (x0 + x1) / 2, ctY, (z0 + z1) / 2));
+      }
+    } else {
+      ig.add(box(islW + 0.08, COUNTER_T, islD + 0.1, counterMat, islCx, COUNTER_H + COUNTER_T / 2, islZ0 + (islD + 0.04) / 2));
+    }
+    // cascades : les deux bouts, sauf celui rattaché au mur (péninsule)
+    for (const s of peninsula ? [0] : [0, 1]) {
       ig.add(box(0.04, COUNTER_TOP, islD + 0.1, counterMat,
         islX0 - 0.02 + s * (islW + 0.04), COUNTER_TOP / 2, islZ0 + (islD + 0.04) / 2));
     }
@@ -1542,19 +1639,41 @@ export function buildKitchen(state) {
     for (let i = 0; i < nP; i++) {
       ig.add(D.pendant(islCx + (i - (nP - 1) / 2) * (islW / nP), 1.78, islZ0 + islD / 2));
     }
-    ig.add(D.bowl(islCx - 0.4, COUNTER_TOP, islZ0 + islD / 2));
-    ig.add(D.board(islCx + 0.5, COUNTER_TOP, islZ0 + islD / 2, -0.25));
+    if (islFeature === 'aucun') {
+      ig.add(D.bowl(islCx - 0.4, COUNTER_TOP, islZ0 + islD / 2));
+      ig.add(D.board(islCx + 0.5, COUNTER_TOP, islZ0 + islD / 2, -0.25));
+    }
     inner.add(ig);
     islandGroup = ig;
-    } // fin else (îlot possible)
   }
 
-  // déco près de l'évier
-  if (placed.evier) {
+  // ——— hotte : cheminée, micro-hotte combinée (REQ-1003) ou hotte d'îlot (REQ-1006) ———
+  // (après l'îlot : la plaque d'îlot fixe placed.cuisiniere)
+  if (state.appliances.hood && placed.cuisiniere) {
+    if (placed.cuisiniere.isl) {
+      const hood = buildIslandHood(applianceMat);
+      hood.position.set(placed.cuisiniere.x, 0, placed.cuisiniere.z);
+      inner.add(hood);
+      manifest.appliances.hood = true;
+      manifest.add('hotte-coffrage');
+    } else {
+      const micro = (state.hoodType || 'cheminee') === 'micro';
+      const hood = micro ? buildMicroHood(applianceMat, matsUpper, manifest) : buildHood(applianceMat);
+      const p = centeredPlacement(placed.cuisiniere.wall, placed.cuisiniere.along);
+      hood.position.copy(p.pos);
+      hood.rotation.y = p.rotY;
+      inner.add(hood);
+      manifest.appliances.hood = true;
+      if (!micro) manifest.add('hotte-coffrage');
+    }
+  }
+
+  // déco près de l'évier (mural seulement)
+  if (placed.evier && !placed.evier.isl) {
     const pAl = Math.min(Math.max(placed.evier.along + 0.85, 0.3), wallLen[placed.evier.wall] - 0.3);
     inner.add(D.plant(...pointFor(placed.evier.wall, pAl, 0.3, COUNTER_TOP).toArray(), 1.05));
   }
-  if (!state.island && placed.evier) {
+  if (!wantIsland && placed.evier && !placed.evier.isl) {
     const bAl = Math.min(Math.max(placed.evier.along - 1.0, 0.4), wallLen[placed.evier.wall] - 0.4);
     inner.add(D.bowl(...pointFor(placed.evier.wall, bAl, 0.33, COUNTER_TOP).toArray()));
   }
@@ -1611,7 +1730,7 @@ export function buildKitchen(state) {
     return sp;
   }
   // fenêtres et portes (bande + arc de débattement pour les portes)
-  for (const wallKey of ['back', 'left', 'right']) {
+  for (const wallKey of ['back', 'left', 'right', 'front']) {
     for (const win of winsByWall[wallKey]) {
       const g = new THREE.Group();
       const band = flatBox(win.width, 0.26, '#7fb7e8');
@@ -1663,10 +1782,10 @@ export function buildKitchen(state) {
     planLayer.add(g);
     planPick.push(disc);
   }
-  if (placed.evier) {
+  if (placed.evier && !placed.evier.isl) {
     discMarker('#3f86c9', '💧 Eau', { plan: 'water' }, pointFor(placed.evier.wall, placed.evier.along, 0.33, PLAN_Y));
   }
-  if (placed.cuisiniere) {
+  if (placed.cuisiniere && !placed.cuisiniere.isl) {
     discMarker('#d9763a', '⚡ 240 V', { plan: 'stove' }, pointFor(placed.cuisiniere.wall, placed.cuisiniere.along, 0.3, PLAN_Y));
   }
   // poignées de redimensionnement des murs
@@ -1684,15 +1803,15 @@ export function buildKitchen(state) {
     planPick.push(dot);
   }
   dimHandle('a', a - 0.02, 0.4);
-  if (state.layout !== 'lineaire') dimHandle('b', 0.4, b - 0.02);
+  if (state.layout !== 'lineaire') dimHandle('b', 0.4, (galley ? roomD : b) - 0.02);
   if (state.layout === 'u') dimHandle('c', a - 0.4, c - 0.02);
   // cotes murales
   const lblA = textSprite(`Mur principal · ${a.toFixed(2)} m`);
   lblA.position.set(a / 2, PLAN_Y, 1.0);
   planLayer.add(lblA);
   if (state.layout !== 'lineaire') {
-    const lblB = textSprite(`Gauche · ${b.toFixed(2)} m`);
-    lblB.position.set(1.15, PLAN_Y, b / 2);
+    const lblB = textSprite(galley ? `Profondeur · ${roomD.toFixed(2)} m` : `Gauche · ${b.toFixed(2)} m`);
+    lblB.position.set(1.15, PLAN_Y, (galley ? roomD : b) / 2);
     planLayer.add(lblB);
   }
   if (state.layout === 'u') {
@@ -1701,7 +1820,7 @@ export function buildKitchen(state) {
     planLayer.add(lblC);
   }
   // bandes de murs cliquables (invisibles) pour « ajouter ici »
-  for (const wallKey of ['back', 'left', 'right']) {
+  for (const wallKey of galley ? ['back', 'left', 'right', 'front'] : ['back', 'left', 'right']) {
     const len = wallLen[wallKey];
     const r = rectFor(wallKey, 0, len, -0.12, 0.55);
     const strip = new THREE.Mesh(new THREE.BoxGeometry(r.sx, 0.02, r.sz), new THREE.MeshBasicMaterial({ visible: false }));
@@ -1763,10 +1882,10 @@ export function buildKitchen(state) {
       elevGroups[wallKey].add(g);
       elevPick.push(disc);
     }
-    if (placed.evier) {
+    if (placed.evier && !placed.evier.isl) {
       elevDisc(placed.evier.wall, placed.evier.along, 0.55, '#3f86c9', '💧 Eau', { elev: 'water', wall: placed.evier.wall });
     }
-    if (placed.cuisiniere) {
+    if (placed.cuisiniere && !placed.cuisiniere.isl) {
       elevDisc(placed.cuisiniere.wall, placed.cuisiniere.along, 0.42, '#d9763a', '⚡ 240 V', { elev: 'stove', wall: placed.cuisiniere.wall });
     }
   }
@@ -1777,10 +1896,10 @@ export function buildKitchen(state) {
 
   // fenêtre de référence pour le soleil (la première posée, sinon point virtuel au-dessus de l'évier)
   let sunWindow = null;
-  for (const wk of ['back', 'left', 'right']) {
+  for (const wk of ['back', 'left', 'right', 'front']) {
     if (winsByWall[wk].length) {
       const win = winsByWall[wk][0];
-      const normals = { back: new THREE.Vector3(0, 0, 1), left: new THREE.Vector3(1, 0, 0), right: new THREE.Vector3(-1, 0, 0) };
+      const normals = { back: new THREE.Vector3(0, 0, 1), left: new THREE.Vector3(1, 0, 0), right: new THREE.Vector3(-1, 0, 0), front: new THREE.Vector3(0, 0, -1) };
       sunWindow = { pos: toWorld(pointFor(wk, win.pos, 0, 1.85)), normal: normals[wk] };
       break;
     }
@@ -1790,7 +1909,9 @@ export function buildKitchen(state) {
   }
 
   const sinkPt = placed.evier
-    ? toWorld(pointFor(placed.evier.wall, placed.evier.along, 0.4, 0.95))
+    ? (placed.evier.isl
+      ? toWorld(new THREE.Vector3(placed.evier.x, 0.95, placed.evier.z))
+      : toWorld(pointFor(placed.evier.wall, placed.evier.along, 0.4, 0.95)))
     : toWorld(new THREE.Vector3(a / 2, 0.95, 0.4));
 
   // REQ-714 : la plinthe (toe-kick) se vend en longueurs de 96 po
@@ -1815,7 +1936,7 @@ export function buildKitchen(state) {
   // données pour le validateur NKBA (triangle de travail, surfaces de dépôt,
   // séparation des centres, dégagements, fenêtres)
   const nkbaInfo = {
-    island: state.island,
+    island: wantIsland,
     islandImpossible,
     stoveAuto: stoveIsAuto,
     wanted: { frigo: state.appliances.fridge, dw: state.appliances.dw, cuisiniere: state.appliances.range },
@@ -1835,7 +1956,10 @@ export function buildKitchen(state) {
     wallLens: wallLen,
   };
   for (const [k, p] of Object.entries(nkbaInfo.placed)) {
-    if (p) nkbaInfo.pts[k] = toWorld(pointFor(p.wall, p.along, 0.3, 0));
+    if (!p) continue;
+    nkbaInfo.pts[k] = p.isl
+      ? toWorld(new THREE.Vector3(p.x, 0, p.z))
+      : toWorld(pointFor(p.wall, p.along, 0.3, 0));
   }
   for (const wk of cabWalls) nkbaInfo.spans[wk] = counterSpans(wk);
 

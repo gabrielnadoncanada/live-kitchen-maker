@@ -3,9 +3,10 @@
 // plan/élévation, curseurs de la sidebar, menus d'ajout) passent par resolveOpeningPos.
 
 export function wallLenOf(s, wall) {
-  if (wall === 'back') return s.dims.a;
-  if (wall === 'left') return s.layout !== 'lineaire' ? s.dims.b : 3.5;
-  return s.layout === 'u' ? s.dims.c : 3.5;
+  if (wall === 'back' || wall === 'front') return s.dims.a; // 'front' : mur avant (galley)
+  if (wall === 'left') return s.layout === 'galley' ? Math.max(2.6, s.dims.b) : s.layout !== 'lineaire' ? s.dims.b : 3.5;
+  if (wall === 'right') return s.layout === 'u' ? s.dims.c : s.layout === 'galley' ? Math.max(2.6, s.dims.b) : 3.5;
+  return 3.5;
 }
 
 const GAP = 0.06;          // jeu minimal entre deux ouvertures

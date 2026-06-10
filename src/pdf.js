@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import { getTenant, getTheme } from './tenant.js';
 import { fmt } from './pricing.js';
 
-const LAYOUT_LABELS = { lineaire: 'Linéaire', l: 'En L', u: 'En U' };
+const LAYOUT_LABELS = { lineaire: 'Linéaire', l: 'En L', u: 'En U', galley: 'Couloir' };
 
 function hexRgb(hex) {
   const v = parseInt(hex.slice(1), 16);
@@ -55,9 +55,12 @@ export function downloadQuotePdf(quote, state, contact) {
   doc.text('Projet', M, y);
   doc.setFont('helvetica', 'normal');
   const dims = [`mur principal ${state.dims.a.toFixed(2)} m`];
-  if (state.layout !== 'lineaire') dims.push(`mur gauche ${state.dims.b.toFixed(2)} m`);
+  if (state.layout === 'galley') dims.push(`profondeur ${Math.max(2.6, state.dims.b).toFixed(2)} m`);
+  else if (state.layout !== 'lineaire') dims.push(`mur gauche ${state.dims.b.toFixed(2)} m`);
   if (state.layout === 'u') dims.push(`mur droit ${state.dims.c.toFixed(2)} m`);
-  doc.text(`Cuisine ${LAYOUT_LABELS[state.layout]}${state.island ? ' + îlot' : ''} — ${dims.join(', ')}`, M + 32, y);
+  const islNote = state.island && state.layout !== 'galley'
+    ? ((state.islandMode || 'libre') === 'peninsule' ? ' + péninsule' : ' + îlot') : '';
+  doc.text(`Cuisine ${LAYOUT_LABELS[state.layout]}${islNote} — ${dims.join(', ')}`, M + 32, y);
   y += 10;
 
   const line = (name, value, { bold = false, small = false, indent = 0 } = {}) => {

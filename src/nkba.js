@@ -127,8 +127,9 @@ export function computeNkbaWarnings(nkba) {
       back: { x0: 0, x1: a, z0: 0, z1: 0.66 },
       left: { x0: nkba.planes.left, x1: nkba.planes.left + 0.66, z0: 0.92, z1: nkba.wallLens?.left ?? roomD },
       right: { x0: nkba.planes.right - 0.66, x1: nkba.planes.right, z0: 0.92, z1: nkba.wallLens?.right ?? roomD },
+      front: { x0: 0, x1: a, z0: roomD - 0.66, z1: roomD }, // rangée avant (couloir)
     };
-    for (const wall of ['back', 'left', 'right']) {
+    for (const wall of ['back', 'left', 'right', 'front']) {
       for (const door of nkba.doors[wall] || []) {
         const zone = swing(wall, door.pos, door.width);
         if (nkba.islandRect && inter(zone, nkba.islandRect)) {
@@ -137,7 +138,8 @@ export function computeNkbaWarnings(nkba) {
         for (const wk of nkba.cabWalls || []) {
           if (wk === wall) continue; // son propre mur est déjà dégagé par les segments
           if (inter(zone, strips[wk])) {
-            out.push({ id: 'NKBA2', msg: `Le débattement de la porte heurte les caissons du mur ${wk === 'back' ? 'principal' : wk === 'left' ? 'gauche' : 'droit'}.` });
+            const nom = { back: 'principal', left: 'gauche', right: 'droit', front: 'avant' }[wk];
+            out.push({ id: 'NKBA2', msg: `Le débattement de la porte heurte les caissons du mur ${nom}.` });
           }
         }
       }

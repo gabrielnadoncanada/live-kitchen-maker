@@ -83,7 +83,10 @@ function viewPositions() {
   const f = current.focus;
   const d = f.roomD;
   return {
-    ensemble: { pos: [f.a * 0.28 + 1.2, 2.3, d / 2 + 2.7], tgt: [0, 0.9, -d * 0.12] },
+    // en couloir, la vue d'ensemble plonge dans le corridor (la rangée avant cacherait tout)
+    ensemble: state.layout === 'galley'
+      ? { pos: [f.a * 0.3, 5.4, d / 2 + 3.6], tgt: [0, 0.2, -d * 0.1] }
+      : { pos: [f.a * 0.28 + 1.2, 2.3, d / 2 + 2.7], tgt: [0, 0.9, -d * 0.12] },
     plan: { pos: [0, 9.2, 0.02], tgt: [0, 0, 0] },
     detail: { pos: [f.sink.x + 1.35, 1.5, f.sink.z + 1.7], tgt: [f.sink.x, 0.95, f.sink.z] },
   };
