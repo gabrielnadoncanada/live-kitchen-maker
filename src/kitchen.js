@@ -12,6 +12,11 @@ import {
 import { getTenant, getTheme } from './tenant.js';
 import { findSku, fillerSku, IN } from './skuCatalog.js';
 import { windowViewTexture } from './textures.js';
+import { cut, nearestIn, overlaps1D } from './intervals.js';
+import {
+  DOOR_MARGIN, WIN_MARGIN, UPPER_WIN_MARGIN,
+  hoodHalfZone, hoodHalfClear, HOOD_WIN_GAP,
+} from './clearances.js';
 
 // ——— dimensions normalisées (m) ———
 const PLINTH = 0.1;
@@ -902,13 +907,6 @@ function mergeStatic(container, skip = new Set()) {
   }
 }
 
-// retranche [c0,c1] d'une liste d'intervalles
-function cut(intervals, c0, c1) {
-  return intervals.flatMap(([s0, s1]) =>
-    (c1 <= s0 || c0 >= s1 ? [[s0, s1]] : [[s0, Math.max(s0, c0)], [Math.min(s1, c1), s1]])
-  ).filter(([s0, s1]) => s1 - s0 > 0.001);
-}
-
 class Manifest {
   constructor() {
     this.modules = {};
@@ -1149,11 +1147,47 @@ export function buildKitchen(state) {
   // ——— segments libres pour les caissons (coins et portes retranchés) ———
   const hasCornerL = state.layout === 'l' || state.layout === 'u';
   const hasCornerR = state.layout === 'u';
-  function cabSegments(wallKey) {
+  // une porte dans l'emprise du caisson de coin (mur arrière, ou aile de retour
+  // sur le mur perpendiculaire) → le coin saute au lieu de recouvrir la porte,
+  // et le ruban du mur arrière reprend depuis le mur
+  const cornerDoorClash = (mirror) => {
+    const x0 = mirror ? a - CORNER : 0;
+    const backHit = doorsByWall.back.some(
+      (o) => o.pos + o.width / 2 + DOOR_MARGIN > x0 && o.pos - o.width / 2 - DOOR_MARGIN < x0 + CORNER
+    );
+    const sideHit = (doorsByWall[mirror ? 'right' : 'left'] || []).some(
+      (o) => o.pos - o.width / 2 - DOOR_MARGIN < CORNER
+    );
+    return backHit || sideHit;
+  };
+  const cornerL = hasCornerL && !cornerDoorClash(false);
+  const cornerR = hasCornerR && !cornerDoorClash(true);
+  // ——— modèle de gap unique : intervalles libres d'un mur pour une bande
+  // verticale [y0,y1] donnée. Les ouvertures ne bloquent que si elles
+  // chevauchent réellement la bande (un caisson bas passe sous une fenêtre,
+  // une colonne pleine hauteur non) — le principe est géométrique, plus
+  // aucune décision codée en dur par type de caisson.
+  const DOOR_Y1 = 2.05; // haut du cadre de porte
+  function freeIntervals(wallKey, lo, hi, y0, y1, winMargin, minLen) {
+    let segs = [[lo, hi]];
+    if (overlaps1D(y0, y1, 0, DOOR_Y1)) {
+      for (const door of doorsByWall[wallKey]) {
+        segs = cut(segs, door.pos - door.width / 2 - DOOR_MARGIN, door.pos + door.width / 2 + DOOR_MARGIN);
+      }
+    }
+    if (overlaps1D(y0, y1, WIN_Y0, WIN_Y1)) {
+      for (const win of winsByWall[wallKey]) {
+        segs = cut(segs, win.pos - win.width / 2 - winMargin, win.pos + win.width / 2 + winMargin);
+      }
+    }
+    return segs.filter(([s0, s1]) => s1 - s0 >= minLen);
+  }
+  // bande d'un mur entre ses réserves de coin
+  function wallBand(wallKey, y0, y1, winMargin, minLen) {
     let lo, hi;
     if (wallKey === 'back') {
-      lo = hasCornerL ? CORNER : 0.02;
-      hi = hasCornerR ? a - CORNER : a - 0.02;
+      lo = cornerL ? CORNER : 0.02;
+      hi = cornerR ? a - CORNER : a - 0.02;
     } else if (wallKey === 'front') {
       lo = 0.02;                 // les deux rangées d'un couloir n'ont pas de coin
       hi = a - 0.02;
@@ -1161,22 +1195,16 @@ export function buildKitchen(state) {
       lo = CORNER;
       hi = wallLen[wallKey] - 0.02;
     }
-    let segs = [[lo, hi]];
-    for (const door of doorsByWall[wallKey]) {
-      segs = cut(segs, door.pos - door.width / 2 - 0.07, door.pos + door.width / 2 + 0.07);
-    }
-    return segs.filter(([s0, s1]) => s1 - s0 >= 0.34);
+    return freeIntervals(wallKey, lo, hi, y0, y1, winMargin, minLen);
   }
   const segsByWall = {};
-  for (const wk of cabWalls) segsByWall[wk] = cabSegments(wk);
-
-  // segments « pleine hauteur » : les fenêtres y sont aussi retranchées —
-  // un frigo ou un garde-manger ne doit jamais recouvrir une fenêtre
   const tallSegsByWall = {};
   for (const wk of cabWalls) {
-    let ts = [...(segsByWall[wk] || [])];
-    for (const win of winsByWall[wk]) ts = cut(ts, win.pos - win.width / 2 - 0.05, win.pos + win.width / 2 + 0.05);
-    tallSegsByWall[wk] = ts.filter(([s0, s1]) => s1 - s0 >= 0.6);
+    // caissons bas : sous les fenêtres, seules les portes bloquent
+    segsByWall[wk] = wallBand(wk, 0, PLINTH + CARCASS_H, WIN_MARGIN, 0.34);
+    // colonnes pleine hauteur : un frigo ou un garde-manger ne doit jamais
+    // recouvrir une fenêtre
+    tallSegsByWall[wk] = wallBand(wk, 0, TALL_H, WIN_MARGIN, 0.6);
   }
 
   function largestSeg(wallKey) {
@@ -1371,7 +1399,26 @@ export function buildKitchen(state) {
     }
     return catalogWidths(len);
   }
-  const placedIntervals = { back: [], left: [], right: [], front: [] }; // REQ-803 : filet AABB
+  // REQ-803 : filet AABB 3D — chaque volume posé (caisson, colonne, murale,
+  // coin, hotte, îlot) et chaque ouverture s'enregistrent ici en coordonnées
+  // pièce ; un balayage par paires en fin de construction signale tout
+  // chevauchement réel, tous murs confondus (coins en L/U compris)
+  const solidBoxes = [];
+  const pushSolid = (x0, x1, z0, z1, y0, y1, kind, label) => {
+    solidBoxes.push({ x0, x1, z0, z1, y0, y1, kind, label });
+  };
+  const addSolid = (wallKey, al0, al1, d0, d1, y0, y1, kind, label) => {
+    if (al1 - al0 < 0.012) return;
+    const r = rectFor(wallKey, al0, al1, d0, d1);
+    pushSolid(r.x - r.sx / 2, r.x + r.sx / 2, r.z - r.sz / 2, r.z + r.sz / 2, y0, y1, kind, `${wallKey}:${label}`);
+  };
+  // les ouvertures participent au filet : un caisson qui recouvre une porte ou
+  // une fenêtre est une vraie erreur de placement
+  for (const wk of ['back', 'left', 'right', 'front']) {
+    if (!wallPlane[wk]) continue;
+    for (const win of winsByWall[wk]) addSolid(wk, win.pos - win.width / 2, win.pos + win.width / 2, -0.02, 0.02, WIN_Y0, WIN_Y1, 'ouverture', 'fenetre');
+    for (const door of doorsByWall[wk]) addSolid(wk, door.pos - door.width / 2, door.pos + door.width / 2, -0.02, 0.02, 0, 2.05, 'ouverture', 'porte');
+  }
   let plinthLin = 0; // REQ-714 : linéaire de plinthe (toe-kick)
   let crownLin = 0;  // REQ-906 : linéaire de moulure couronne
   let valanceLin = 0; // REQ-907 : linéaire de valance lumineuse sous les murales
@@ -1380,21 +1427,35 @@ export function buildKitchen(state) {
     const segs = segsByWall[wallKey] || [];
     if (!segs.length) return;
     const items = [...fixedByWall[wallKey]].sort((p, q) => p.want - q.want);
-    // REQ-108 (NKBA 20) : la cuisinière auto fuit les fenêtres (sécurité incendie).
+    // REQ-108 (NKBA 20) : la cuisinière fuit les fenêtres (sécurité incendie).
     // C'est la HOTTE qui dicte la marge : elle est plus large que la cuisinière
     // (90 cm + coffrage) et monte en plein dans la hauteur de la fenêtre.
+    // Résolution par intervalles : centres admissibles = segments du mur moins
+    // les zones fenêtre élargies du dégagement hotte — l'ancien snap bord à bord
+    // pouvait renvoyer une position hors segment, que le clamp final ramenait…
+    // sous la fenêtre. S'applique aussi à une position manuelle (le drag impose
+    // déjà la règle ; ceci rattrape les états persistés avant l'ajout d'une hotte).
     for (const it of items) {
-      if ((it.type !== 'cuisiniere' && it.type !== 'plaque') || !stoveIsAuto) continue;
+      if (it.type !== 'cuisiniere' && it.type !== 'plaque') continue;
       const half = state.appliances.hood
-        ? Math.max(it.w / 2, (state.hoodType || 'cheminee') === 'micro' ? 0.42 : 0.52)
+        ? Math.max(it.w / 2, hoodHalfClear(state.hoodType))
         : it.w / 2;
+      let allowed = segs
+        .filter(([s0, s1]) => s1 - s0 >= it.w)
+        .map(([s0, s1]) => [s0 + it.w / 2, s1 - it.w / 2]);
       for (const win of winsByWall[wallKey] || []) {
-        const lo = win.pos - win.width / 2, hi = win.pos + win.width / 2;
-        if (it.want + half > lo && it.want - half < hi) {
-          const left = lo - half - 0.05, right = hi + half + 0.05;
-          it.want = Math.abs(left - it.want) < Math.abs(right - it.want) ? left : right;
+        allowed = cut(allowed, win.pos - win.width / 2 - half - HOOD_WIN_GAP, win.pos + win.width / 2 + half + HOOD_WIN_GAP, 0);
+      }
+      // la hotte déborde de la cuisinière (~12 cm de chaque côté) : son emprise
+      // physique ne doit pas non plus mordre sur le cadre d'une porte
+      if (state.appliances.hood) {
+        const hz = hoodHalfZone(state.hoodType);
+        for (const door of doorsByWall[wallKey] || []) {
+          allowed = cut(allowed, door.pos - door.width / 2 - hz, door.pos + door.width / 2 + hz, 0);
         }
       }
+      const c = nearestIn(allowed, it.want);
+      if (c != null) it.want = c;
     }
     // REQ-209 (NKBA 12) : zone interdite aux colonnes entre l'évier et la cuisinière
     const sinkF = items.find((i) => i.type === 'evier');
@@ -1486,9 +1547,24 @@ export function buildKitchen(state) {
         const contraint = (it) =>
           (it.type === 'evier' && !sinkIsAuto) ||
           ((it.type === 'cuisiniere' || it.type === 'plaque') && !stoveIsAuto);
-        const di = segItems.findIndex(
-          (it, i) => contraint(it) && Math.abs(xs[i] + it.w / 2 - it.want) > 0.2
-        );
+        // invariants durs vérifiés sur la position FINALE (les poussées
+        // avant/arrière peuvent défaire le snap d'évitement initial) :
+        // la hotte ne recouvre jamais une fenêtre, une colonne non plus
+        const wins = winsByWall[wallKey] || [];
+        const overWin = (lo2, hi2) =>
+          wins.some((win) => lo2 < win.pos + win.width / 2 - 0.001 && hi2 > win.pos - win.width / 2 + 0.001);
+        const violation = (it, cx) => {
+          if ((it.type === 'cuisiniere' || it.type === 'plaque') && state.appliances.hood) {
+            const h2 = Math.max(it.w / 2, hoodHalfClear(state.hoodType));
+            if (overWin(cx - h2, cx + h2)) return true;
+          }
+          if (it.tall && overWin(cx - it.w / 2, cx + it.w / 2)) return true;
+          return false;
+        };
+        const di = segItems.findIndex((it, i) => {
+          const cx = xs[i] + it.w / 2;
+          return (contraint(it) && Math.abs(cx - it.want) > 0.2) || violation(it, cx);
+        });
         if (di < 0 || !segItems.length) break;
         // sacrifier du côté qui pousse l'appareil contraint, par priorité décroissante
         const pousseDroite = xs[di] + segItems[di].w / 2 > segItems[di].want;
@@ -1542,10 +1618,11 @@ export function buildKitchen(state) {
       });
       // REQ-711 : un bout de segment qui ne bute pas sur un caisson de coin
       // est un flanc visible → fausse porte de finition
+      const cornerHere = wallKey === 'left' ? cornerL : wallKey === 'right' ? cornerR : false;
       const startExposed = wallKey === 'back'
-        ? !(hasCornerL && Math.abs(s0 - CORNER) < 0.03)
-        : !(Math.abs(s0 - CORNER) < 0.03);
-      const endExposed = !(wallKey === 'back' && hasCornerR && Math.abs(s1 - (a - CORNER)) < 0.03);
+        ? !(cornerL && Math.abs(s0 - CORNER) < 0.03)
+        : !(cornerHere && Math.abs(s0 - CORNER) < 0.03);
+      const endExposed = !(wallKey === 'back' && cornerR && Math.abs(s1 - (a - CORNER)) < 0.03);
       if (slots.length) {
         if (startExposed) slots[0].panelStart = true;
         if (endExposed) slots[slots.length - 1].panelEnd = true;
@@ -1634,7 +1711,11 @@ export function buildKitchen(state) {
             }
           }
         }
-        placedIntervals[wallKey].push({ a0: along, a1: along + slot.w, t: type });
+        if (type === 'frigo' || type === 'garde-manger' || type === 'four-mural') {
+          addSolid(wallKey, along, along + slot.w, 0, type === 'frigo' ? 0.7 : PANTRY_D, 0, TALL_H, 'caisson', type);
+        } else {
+          addSolid(wallKey, along, along + slot.w, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', type);
+        }
         if (type !== 'cuisiniere') plinthLin += slot.w;
         g.position.copy(pl.pos);
         g.rotation.y = pl.rotY;
@@ -1676,12 +1757,20 @@ export function buildKitchen(state) {
     inner.add(cg);
     const cs = findSku('baseCorner', Math.round(CORNER / IN));
     if (!manifest.addSku(cs, `Caisson de coin ${cs?.widthIn} po`)) manifest.add('base-coin');
-    placedIntervals.back.push({ a0: mirror ? a - CORNER : 0, a1: mirror ? a : CORNER, t: 'coin' });
+    // deux ailes en L (comme les « wings » de Home Builder) : le long du mur
+    // arrière, puis le retour le long du mur perpendiculaire
+    if (mirror) {
+      pushSolid(a - CORNER, a, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', 'back:coin');
+      pushSolid(a - BASE_D, a, BASE_D, CORNER, 0, PLINTH + CARCASS_H, 'caisson', 'right:coin (retour)');
+    } else {
+      pushSolid(0, CORNER, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', 'back:coin');
+      pushSolid(0, BASE_D, BASE_D, CORNER, 0, PLINTH + CARCASS_H, 'caisson', 'left:coin (retour)');
+    }
     plinthLin += CORNER;
     return x0;
   }
-  if (hasCornerL) cornerUnit(false);
-  if (hasCornerR) cornerUnit(true);
+  if (cornerL) cornerUnit(false);
+  if (cornerR) cornerUnit(true);
 
   // ——— comptoirs (segments, trous d'évier, retrait cuisinière et portes) ———
   function counterSpans(wallKey) {
@@ -1818,6 +1907,7 @@ export function buildKitchen(state) {
     valanceLin += WBC_W;
     const s = findSku('wallBlindCorner', 30);
     if (!manifest.addSku(s, 'Coin aveugle mural 30 po', { zone: 'upper' })) manifest.add('mur');
+    addSolid('back', x0, x0 + WBC_W, 0, WALL_CAB_D, WALL_BOT, WALL_BOT + WALL_CAB_H, 'caisson', 'coin-aveugle-mural');
     return true;
   }
   const wbcL = hasCornerL ? blindCornerUpper(false) : false;
@@ -1838,14 +1928,10 @@ export function buildKitchen(state) {
       upLo = WALL_CAB_D + 0.04;
       upHi = wallLen[wk] - 0.02;
     }
-    let zones = [[upLo, upHi]];
-    for (const door of doorsByWall[wk]) {
-      zones = cut(zones, door.pos - door.width / 2 - 0.07, door.pos + door.width / 2 + 0.07);
-    }
-    for (const win of winsByWall[wk]) zones = cut(zones, win.pos - win.width / 2 - 0.08, win.pos + win.width / 2 + 0.08);
+    let zones = freeIntervals(wk, upLo, upHi, WALL_BOT, WALL_BOT + WALL_CAB_H, UPPER_WIN_MARGIN, 0);
     if (placed.cuisiniere && placed.cuisiniere.wall === wk && state.appliances.hood) {
       // REQ-1003 : la micro-hotte (30 po) réserve une zone plus étroite que la cheminée
-      const half = (state.hoodType || 'cheminee') === 'micro' ? 0.39 : 0.5;
+      const half = hoodHalfZone(state.hoodType);
       zones = cut(zones, placed.cuisiniere.along - half, placed.cuisiniere.along + half);
     }
     if (placed.frigo && placed.frigo.wall === wk) zones = cut(zones, placed.frigo.along - placed.frigo.w / 2 - 0.004, placed.frigo.along + placed.frigo.w / 2 + 0.004);
@@ -1865,6 +1951,7 @@ export function buildKitchen(state) {
     }
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
+      addSolid(wk, z0, z1, 0, WALL_CAB_D, WALL_BOT, WALL_BOT + WALL_CAB_H, 'caisson', 'murales');
       // REQ-909 : panneau d'extrémité mural (WEP) sur chaque bout exposé,
       // l'équivalent haut de la fausse porte de bout des bas (REQ-711)
       for (const [end, side] of [[z0, 'debut'], [z1, 'fin']]) {
@@ -2092,6 +2179,9 @@ export function buildKitchen(state) {
       hood.position.copy(p.pos);
       hood.rotation.y = p.rotY;
       inner.add(hood);
+      const hz = hoodHalfZone(state.hoodType);
+      addSolid(placed.cuisiniere.wall, placed.cuisiniere.along - hz, placed.cuisiniere.along + hz,
+        0, 0.56, HOOD_Y, ROOM_H, 'caisson', 'hotte');
       manifest.appliances.hood = true;
       if (!micro) manifest.add('hotte-coffrage');
     }
@@ -2416,15 +2506,28 @@ export function buildKitchen(state) {
   // REQ-906 : la couronne aussi (pas encore de SKU catalogue — ligne générique)
   if (crownLin > 0.1) manifest.add('couronne', Math.ceil(crownLin / 2.44));
 
-  // REQ-803 : filet AABB — en dev, signale tout chevauchement de caissons sur un mur
-  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-    for (const [wk, list] of Object.entries(placedIntervals)) {
-      const sorted = [...list].sort((p, q) => p.a0 - q.a0);
-      for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i].a0 < sorted[i - 1].a1 - 0.005) {
-          console.warn(`[REQ-803] Chevauchement sur le mur ${wk} : ${sorted[i - 1].t} [${sorted[i - 1].a0.toFixed(2)}–${sorted[i - 1].a1.toFixed(2)}] ↔ ${sorted[i].t} [${sorted[i].a0.toFixed(2)}–${sorted[i].a1.toFixed(2)}]`);
+  // REQ-803 : filet AABB 3D — balayage par paires de tous les volumes posés,
+  // tous murs confondus. Un contact bord à bord (pose collée) n'est pas une
+  // collision ; les paires d'ouvertures sont déjà couvertes par REQ-802.
+  const collisions = [];
+  {
+    if (islandRect) {
+      pushSolid(islandRect.x0, islandRect.x1, islandRect.z0, islandRect.z1, 0, COUNTER_TOP, 'caisson', 'ilot');
+    }
+    const TOUCH = 0.005;
+    for (let i = 0; i < solidBoxes.length; i++) {
+      for (let j = i + 1; j < solidBoxes.length; j++) {
+        const p = solidBoxes[i], q = solidBoxes[j];
+        if (p.kind === 'ouverture' && q.kind === 'ouverture') continue;
+        if (overlaps1D(p.x0, p.x1, q.x0, q.x1, TOUCH)
+          && overlaps1D(p.y0, p.y1, q.y0, q.y1, TOUCH)
+          && overlaps1D(p.z0, p.z1, q.z0, q.z1, TOUCH)) {
+          collisions.push({ a: p.label, b: q.label });
         }
       }
+    }
+    if (collisions.length && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      for (const c of collisions) console.warn(`[REQ-803] Chevauchement : ${c.a} ↔ ${c.b}`);
     }
   }
 
@@ -2479,7 +2582,7 @@ export function buildKitchen(state) {
     if (islandGroup) mergeStatic(islandGroup);
   }
 
-  return { group: root, inner, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps, matMap, islandRect };
+  return { group: root, inner, manifest, editables, focus, walls, planLayer, planPick, planStrips, elevGroups, elevPick, islandGroup, nkba: nkbaInfo, gapComps, matMap, islandRect, collisions };
 }
 
 export function disposeKitchen(group) {

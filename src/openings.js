@@ -9,8 +9,9 @@ export function wallLenOf(s, wall) {
   return 3.5;
 }
 
-const GAP = 0.06;          // jeu minimal entre deux ouvertures
-const EDGE = 0.08;         // marge aux extrémités du mur
+import { OPENING_GAP as GAP, OPENING_EDGE as EDGE } from './clearances.js';
+import { EPS } from './intervals.js';
+
 const round5 = (v) => Math.round(v * 20) / 20;
 
 // Retourne la position valide la plus proche du souhait, ou null s'il n'y a pas de place.
@@ -21,7 +22,7 @@ export function resolveOpeningPos(s, wall, width, desired, excludeId = null) {
   let pos = Math.min(Math.max(desired, lo), hi);
   const others = s.constraints.openings.filter((o) => o.wall === wall && o.id !== excludeId);
   // epsilon : un candidat posé exactement « bord à bord » ne doit pas se rejeter lui-même
-  const overlaps = (o, p) => Math.abs(o.pos - p) < (o.width + width) / 2 + GAP - 1e-6;
+  const overlaps = (o, p) => Math.abs(o.pos - p) < (o.width + width) / 2 + GAP - EPS;
   // n'arrondit au pas de 5 cm que si l'arrondi ne recrée pas un chevauchement
   const finish = (p) => {
     const r = round5(p);

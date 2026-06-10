@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { state, setState } from './state.js';
 import { showMenu, hidePopover } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
+import { cut, nearestIn } from './intervals.js';
+import { FIXTURE_EDGE, hoodHalfClear, hoodHalfZone, HOOD_WIN_GAP } from './clearances.js';
 
 const round5 = (v) => Math.round(v * 20) / 20;
 const WALL_TITLES = { back: 'Mur principal', left: 'Mur gauche', right: 'Mur droit', front: 'Mur avant' };
@@ -84,7 +86,7 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
 
   function clampAlong(wallKey, along, width, f) {
     const len = f.wallLens[wallKey];
-    return Math.min(Math.max(along, width / 2 + 0.08), Math.max(width / 2 + 0.08, len - width / 2 - 0.08));
+    return Math.min(Math.max(along, width / 2 + FIXTURE_EDGE), Math.max(width / 2 + FIXTURE_EDGE, len - width / 2 - FIXTURE_EDGE));
   }
 
   function patchOpening(id, p) {
@@ -128,15 +130,24 @@ export function createPlanEditor(ctx, canvas, getCurrent, { goPlanView } = {}) {
     const w = FIXTURE_W[key] || 0.8;
     let pos = clampAlong(t.wall, t.along, w, t.f);
     // la cuisinière traîne sa hotte : le drag saute par-dessus les fenêtres
-    // (la hotte ne doit jamais les chevaucher — même en placement manuel)
+    // (la hotte ne doit jamais les chevaucher — même en placement manuel).
+    // On résout par intervalles : centres admissibles = mur moins les zones
+    // fenêtre élargies du dégagement hotte — le résultat respecte les deux
+    // contraintes À LA FOIS (l'ancien clamp final pouvait défaire le snap).
     if (key === 'stove' && state.appliances.hood) {
-      const half = (state.hoodType || 'cheminee') === 'micro' ? 0.45 : 0.55;
+      const half = hoodHalfClear(state.hoodType);
+      const lo = w / 2 + FIXTURE_EDGE;
+      let allowed = [[lo, Math.max(lo, t.f.wallLens[t.wall] - w / 2 - FIXTURE_EDGE)]];
       for (const o of state.constraints.openings) {
-        if (o.type !== 'fenetre' || o.wall !== t.wall) continue;
-        const lo = o.pos - o.width / 2 - half, hi = o.pos + o.width / 2 + half;
-        if (pos > lo && pos < hi) pos = pos - lo < hi - pos ? lo : hi;
+        if (o.wall !== t.wall) continue;
+        // fenêtre : dégagement de sécurité ; porte : l'emprise physique de la
+        // hotte ne doit pas mordre sur le cadre
+        const h2 = o.type === 'fenetre' ? half + HOOD_WIN_GAP : hoodHalfZone(state.hoodType);
+        allowed = cut(allowed, o.pos - o.width / 2 - h2, o.pos + o.width / 2 + h2, 0);
       }
-      pos = clampAlong(t.wall, pos, w, t.f);
+      const c = nearestIn(allowed, pos);
+      if (c == null) return; // aucun emplacement valide sur ce mur : on ne bouge pas
+      pos = c;
     }
     setState({ constraints: { [key]: { auto: false, wall: t.wall, pos: round5(pos) } } });
   }
