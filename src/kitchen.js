@@ -146,7 +146,7 @@ function buildBase(w, type, mats, manifest, widthIn = null) {
     return g;
   }
 
-  g.add(box(w - 0.004, CARCASS_H, BASE_D - 0.04, finish, w / 2, PLINTH + CARCASS_H / 2, (BASE_D - 0.04) / 2));
+  g.add(box(w - 0.004, CARCASS_H, BASE_D - DOOR_T, finish, w / 2, PLINTH + CARCASS_H / 2, (BASE_D - DOOR_T) / 2));
 
   const frontY0 = PLINTH + 0.005, frontH = CARCASS_H - 0.01;
   const zF = BASE_D - DOOR_T / 2;
@@ -270,7 +270,7 @@ function buildPantry(mats, manifest) {
   const S = fixedMats();
   const W = PANTRY_W, D = PANTRY_D;
   g.add(box(W, PLINTH, D - 0.07, S.shadeBlack, W / 2, PLINTH / 2, (D - 0.07) / 2));
-  g.add(box(W - 0.004, TALL_H - PLINTH, D - 0.04, finish, W / 2, PLINTH + (TALL_H - PLINTH) / 2, (D - 0.04) / 2));
+  g.add(box(W - 0.004, TALL_H - PLINTH, D - DOOR_T, finish, W / 2, PLINTH + (TALL_H - PLINTH) / 2, (D - DOOR_T) / 2));
   const zF = D - DOOR_T / 2;
   const h1 = (TALL_H - PLINTH) * 0.62, h2 = (TALL_H - PLINTH) * 0.38 - GAP * 2;
   const f1 = makeFront(W - GAP * 2, h1, finish, doorStyle);
@@ -292,7 +292,7 @@ function buildPantry(mats, manifest) {
 function buildWallCab(w, mats, manifest, widthIn = null) {
   const { finish, handleKind, handleMat, doorStyle } = mats;
   const g = new THREE.Group();
-  g.add(box(w - 0.004, WALL_CAB_H, WALL_CAB_D - 0.02, finish, w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
+  g.add(box(w - 0.004, WALL_CAB_H, WALL_CAB_D - DOOR_T, finish, w / 2, WALL_CAB_H / 2, (WALL_CAB_D - DOOR_T) / 2));
   const zF = WALL_CAB_D - DOOR_T / 2;
   const two = w > 0.58;
   const dw = two ? (w - GAP * 3) / 2 : w - GAP * 2;
@@ -996,7 +996,7 @@ export function buildKitchen(state) {
           {
             const niche = FRIDGE_W - 0.05;
             const ofY0 = 1.86, ofH = TALL_H - ofY0, ofD = 0.6;
-            g.add(box(niche - 0.004, ofH, ofD - 0.02, finish, FRIDGE_W / 2, ofY0 + ofH / 2, (ofD - 0.02) / 2));
+            g.add(box(niche - 0.004, ofH, ofD - DOOR_T, finish, FRIDGE_W / 2, ofY0 + ofH / 2, (ofD - DOOR_T) / 2));
             const dw2 = (niche - GAP * 3) / 2;
             const zF2 = ofD - DOOR_T / 2;
             [GAP + dw2 / 2, GAP * 2 + dw2 * 1.5].forEach((x, i) => {
@@ -1070,7 +1070,7 @@ export function buildKitchen(state) {
     const sgn = mirror ? -1 : 1;
     const base = mirror ? a : 0;
     cg.add(box(CORNER, PLINTH, BASE_D - 0.07, S.shadeBlack, base + sgn * CORNER / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
-    cg.add(box(CORNER, CARCASS_H, BASE_D - 0.04, finish, base + sgn * CORNER / 2, PLINTH + CARCASS_H / 2, (BASE_D - 0.04) / 2));
+    cg.add(box(CORNER, CARCASS_H, BASE_D - DOOR_T, finish, base + sgn * CORNER / 2, PLINTH + CARCASS_H / 2, (BASE_D - DOOR_T) / 2));
     const f = makeFront(CORNER - BASE_D - GAP, CARCASS_H - 0.01, finish, state.doorStyle);
     f.position.set(base + sgn * (BASE_D + (CORNER - BASE_D) / 2), PLINTH + CARCASS_H / 2, BASE_D - DOOR_T / 2);
     cg.add(f);
@@ -1159,7 +1159,7 @@ export function buildKitchen(state) {
     );
     if (clash) return false;
     const g = new THREE.Group();
-    g.add(box(WBC_W - 0.004, WALL_CAB_H, WALL_CAB_D - 0.02, finish, WBC_W / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
+    g.add(box(WBC_W - 0.004, WALL_CAB_H, WALL_CAB_D - DOOR_T, finish, WBC_W / 2, WALL_CAB_H / 2, (WALL_CAB_D - DOOR_T) / 2));
     const zF = WALL_CAB_D - DOOR_T / 2;
     // la moitié côté coin est aveugle (panneau plein), l'autre porte une porte
     const doorW = WBC_W / 2 - GAP * 2;
@@ -1215,8 +1215,10 @@ export function buildKitchen(state) {
       for (const piece of catalogWidths(z1 - z0)) {
         const pl = modulePlacement(wk, cx, piece.w, WALL_BOT);
         if (piece.filler) {
+          // caisson plein du mur jusqu'au plan des façades — jamais une lamelle flottante
           const fg = new THREE.Group();
-          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, 0.02, finish, piece.w / 2, WALL_CAB_H / 2, WALL_CAB_D - 0.02));
+          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, WALL_CAB_D - 0.02, finish,
+            piece.w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
           fg.position.copy(pl.pos);
           fg.rotation.y = pl.rotY;
           inner.add(fg);
