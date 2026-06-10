@@ -1,0 +1,422 @@
+{
+  "baseStandard": {
+    "9": {
+      "sku": "DOBC09-FW",
+      "price": 147.6
+    },
+    "12": {
+      "sku": "DRDOBC12-FW",
+      "price": 222.6
+    },
+    "15": {
+      "sku": "DRDOBC15-FW",
+      "price": 246.6
+    },
+    "18": {
+      "sku": "DRDOBC18-FW",
+      "price": 264.9
+    },
+    "21": {
+      "sku": "DRDOBC21-FW",
+      "price": 277.5
+    },
+    "24": {
+      "sku": "DOBC24-FW",
+      "price": 245.1
+    },
+    "27": {
+      "sku": "DOBC27-FW",
+      "price": 262.5
+    },
+    "30": {
+      "sku": "DOBC30-FW",
+      "price": 281.1
+    },
+    "33": {
+      "sku": "DOBC33-FW",
+      "price": 297.3
+    },
+    "36": {
+      "sku": "DOBC36-FW",
+      "price": 313.8
+    },
+    "39": {
+      "sku": "DOBC39-FW",
+      "price": 332.7
+    },
+    "42": {
+      "sku": "DOBC42-FW",
+      "price": 342
+    }
+  },
+  "baseDrawer": {
+    "12": {
+      "sku": "DRBC12-FW",
+      "price": 317.7
+    },
+    "15": {
+      "sku": "DRBC15-FW",
+      "price": 347.1
+    },
+    "18": {
+      "sku": "DRBC18-FW",
+      "price": 360.6
+    },
+    "21": {
+      "sku": "DRBC21-FW",
+      "price": 391.8
+    },
+    "24": {
+      "sku": "DRBC24-FW",
+      "price": 403.8
+    },
+    "27": {
+      "sku": "DRBC27-FW",
+      "price": 425.7
+    },
+    "30": {
+      "sku": "DRBC30-FW",
+      "price": 447
+    },
+    "33": {
+      "sku": "DRBC33-FW",
+      "price": 465.6
+    },
+    "36": {
+      "sku": "DRBC36-FW",
+      "price": 486
+    }
+  },
+  "baseCorner": {
+    "33": {
+      "sku": "CBC3309-FW",
+      "price": 414.9
+    },
+    "36": {
+      "sku": "CBC3612-FW",
+      "price": 443.4
+    },
+    "42": {
+      "sku": "BCBC42-FW",
+      "price": 360.9
+    },
+    "45": {
+      "sku": "BCBC45-FW",
+      "price": 390.9
+    },
+    "48": {
+      "sku": "BCBC48-FW",
+      "price": 421.2
+    }
+  },
+  "wall": {
+    "9": {
+      "sku": "W0930",
+      "price": 104.1
+    },
+    "12": {
+      "sku": "W1230",
+      "price": 118.2
+    },
+    "15": {
+      "sku": "W1530",
+      "price": 135
+    },
+    "18": {
+      "sku": "W1830",
+      "price": 149.7
+    },
+    "21": {
+      "sku": "W2130",
+      "price": 168.6
+    },
+    "24": {
+      "sku": "W2430",
+      "price": 190.2
+    },
+    "27": {
+      "sku": "W2730",
+      "price": 206.1
+    },
+    "30": {
+      "sku": "W3030",
+      "price": 218.1
+    },
+    "33": {
+      "sku": "W3330",
+      "price": 238.2
+    },
+    "36": {
+      "sku": "W3630",
+      "price": 252.9
+    },
+    "39": {
+      "sku": "W3930",
+      "price": 131.4
+    },
+    "42": {
+      "sku": "W4236",
+      "price": 360
+    },
+    "33.5": {
+      "sku": "W33.51227",
+      "price": 154.2
+    },
+    "36.5": {
+      "sku": "W36.51227",
+      "price": 180.3
+    },
+    "42.5": {
+      "sku": "W42.518",
+      "price": 232.2
+    }
+  },
+  "wall36": {
+    "9": {
+      "sku": "W0936",
+      "price": 119.1
+    },
+    "12": {
+      "sku": "W1236",
+      "price": 135
+    },
+    "15": {
+      "sku": "W1536",
+      "price": 155.7
+    },
+    "18": {
+      "sku": "W1836",
+      "price": 170.1
+    },
+    "21": {
+      "sku": "W2136",
+      "price": 188.4
+    },
+    "24": {
+      "sku": "W2436",
+      "price": 218.4
+    },
+    "27": {
+      "sku": "W2736",
+      "price": 236.4
+    },
+    "30": {
+      "sku": "W3036",
+      "price": 255.3
+    },
+    "33": {
+      "sku": "W3336",
+      "price": 274.2
+    },
+    "36": {
+      "sku": "W3636",
+      "price": 287.1
+    },
+    "39": {
+      "sku": "W3936",
+      "price": 320.1
+    },
+    "42": {
+      "sku": "W4236",
+      "price": 360
+    }
+  },
+  "wall42": {
+    "30": {
+      "sku": "W3042",
+      "price": 293.7
+    },
+    "36": {
+      "sku": "W3642",
+      "price": 331.8
+    }
+  },
+  "overFridge": {
+    "30": {
+      "sku": "W3015",
+      "price": 120
+    },
+    "33": {
+      "sku": "W3312",
+      "price": 113.7
+    },
+    "36": {
+      "sku": "W3612",
+      "price": 150.6
+    },
+    "39": {
+      "sku": "W39X20X27",
+      "price": 236.1
+    },
+    "33.5": {
+      "sku": "W33.521",
+      "price": 199.8
+    },
+    "36.5": {
+      "sku": "W36.5X20X27",
+      "price": 220.5
+    },
+    "42.5": {
+      "sku": "W42.518",
+      "price": 232.2
+    }
+  },
+  "wallBlindCorner": {
+    "27": {
+      "sku": "WBC2730",
+      "price": 193.8
+    },
+    "30": {
+      "sku": "WBC3030",
+      "price": 223.8
+    },
+    "33": {
+      "sku": "WBC3330",
+      "price": 239.7
+    },
+    "36": {
+      "sku": "WBC3630",
+      "price": 259.8
+    }
+  },
+  "dummyBaseEnd": {
+    "24": {
+      "sku": "BDD2430",
+      "price": 57.6
+    },
+    "27": {
+      "sku": "BDD2730",
+      "price": 66.9
+    },
+    "30": {
+      "sku": "BDD3030",
+      "price": 77.1
+    },
+    "33": {
+      "sku": "BDD3330",
+      "price": 87
+    },
+    "12.75": {
+      "sku": "BDD12.75*36",
+      "price": 45
+    },
+    "21.75": {
+      "sku": "BDD21.75*36",
+      "price": 71.4
+    },
+    "24.75": {
+      "sku": "BDD24.75*36",
+      "price": 75
+    },
+    "25.75": {
+      "sku": "BDD25.75*36",
+      "price": 76.8
+    },
+    "37.5": {
+      "sku": "BDD37.5x36",
+      "price": 109.5
+    },
+    "49.75": {
+      "sku": "BDD49.75*36",
+      "price": 160.5
+    }
+  },
+  "toeKick": {
+    "sku": "TK8",
+    "price": 14.1
+  },
+  "pantry": {
+    "12": {
+      "sku": "WP129327",
+      "price": 511.5
+    },
+    "15": {
+      "sku": "WP159327",
+      "price": 552.3
+    },
+    "18": {
+      "sku": "WP189027",
+      "price": 451.8
+    },
+    "24": {
+      "sku": "WP249027",
+      "price": 567
+    },
+    "27": {
+      "sku": "WP2791.5X27",
+      "price": 696.3
+    },
+    "30": {
+      "sku": "WP309027",
+      "price": 663.6
+    }
+  },
+  "spiceRack": {
+    "6": {
+      "sku": "DRSPBC06-FW",
+      "price": 166.2
+    },
+    "9": {
+      "sku": "DRSPBC09-FW",
+      "price": 183.3
+    },
+    "12": {
+      "sku": "DRSPBC12-FW",
+      "price": 198
+    }
+  },
+  "garbagePullOut": {
+    "18": {
+      "sku": "DRGBBC18-FW",
+      "price": 318
+    }
+  },
+  "baseMicrowave": {
+    "27": {
+      "sku": "BMC27",
+      "price": 372.3
+    }
+  },
+  "ovenColumn": {
+    "30": {
+      "sku": "OC-DB30 DRAWER",
+      "price": 134.1
+    },
+    "33": {
+      "sku": "OC33X103.5",
+      "price": 1016.4
+    }
+  },
+  "filler": {
+    "3": {
+      "sku": "WF330-FW",
+      "price": 14.1
+    },
+    "6": {
+      "sku": "WF636-FW",
+      "price": 29.4
+    },
+    "1.5": {
+      "sku": "TF1.5X96-FW",
+      "price": 24.9
+    }
+  },
+  "fridgeReturnPanel": {
+    "sku": "RRP9627 7/8",
+    "price": 100.5
+  },
+  "dwReturnPanel": {
+    "sku": "DWR",
+    "price": 50.4
+  },
+  "islandBackPanel": {
+    "96": {
+      "sku": "IBP9636",
+      "price": 133.5
+    }
+  },
+  "islandSkinPanel": {
+    "sku": "ISP25.75X36",
+    "price": 36
+  }
+}
