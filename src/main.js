@@ -88,10 +88,61 @@ function viewPositions() {
     ensemble: state.layout === 'galley'
       ? { pos: [f.a * 0.3, 5.4, d / 2 + 3.6], tgt: [0, 0.2, -d * 0.1] }
       : { pos: [f.a * 0.28 + 1.2, 2.3, d / 2 + 2.7], tgt: [0, 0.9, -d * 0.12] },
-    plan: { pos: [0, 9.2, 0.02], tgt: [0, 0, 0] },
+    // la hauteur du plan cadre toute la cuisine quel que soit le ratio d'écran
+    // (en portrait mobile, c'est la largeur qui dicte la distance)
+    plan: (() => {
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+      const half = Math.tan(((ctx.camera.fov / 2) * Math.PI) / 180);
+      const need = Math.max(9.2, (d + 1.6) / (2 * half), (f.a + 2.6) / (2 * half * aspect));
+      return { pos: [0, Math.min(16, need), 0.02], tgt: [0, 0, 0] };
+    })(),
     detail: { pos: [f.sink.x + 1.35, 1.5, f.sink.z + 1.7], tgt: [f.sink.x, 0.95, f.sink.z] },
   };
 }
+
+// ————— mobile : panneau en bottom-sheet à 3 états (pincé / mi-écran / plein) —————
+const mobileMq = window.matchMedia('(max-width: 860px)');
+const sheet = {
+  snaps: () => [88, Math.round(window.innerHeight * 0.45), Math.round(window.innerHeight * 0.86)],
+  idx: 1,
+  set(i) {
+    this.idx = Math.max(0, Math.min(2, i));
+    document.documentElement.style.setProperty('--sheet-h', `${this.snaps()[this.idx]}px`);
+  },
+};
+function setupMobileSheet() {
+  const panel = document.getElementById('panel');
+  const grip = document.getElementById('sheetGrip');
+  sheet.set(1);
+  let drag = null;
+  grip.addEventListener('pointerdown', (e) => {
+    drag = { y0: e.clientY, h0: panel.getBoundingClientRect().height, moved: false };
+    panel.classList.add('dragging');
+    grip.setPointerCapture(e.pointerId);
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const h = Math.max(60, Math.min(window.innerHeight * 0.92, drag.h0 + (drag.y0 - e.clientY)));
+    if (Math.abs(e.clientY - drag.y0) > 4) drag.moved = true;
+    document.documentElement.style.setProperty('--sheet-h', `${h}px`);
+  });
+  grip.addEventListener('pointerup', () => {
+    if (!drag) return;
+    panel.classList.remove('dragging');
+    const h = panel.getBoundingClientRect().height;
+    if (drag.moved) {
+      const snaps = sheet.snaps();
+      sheet.idx = snaps.reduce((b, s, i) => (Math.abs(s - h) < Math.abs(snaps[b] - h) ? i : b), 0);
+      sheet.set(sheet.idx);
+    } else {
+      // simple tap sur la poignée : pincé ⇄ mi-écran
+      sheet.set(sheet.idx === 0 ? 1 : 0);
+    }
+    drag = null;
+  });
+}
+// le popover module (ui.js) demande à voir le meuble : on pince le sheet
+document.addEventListener('sheet:peek', () => { if (mobileMq.matches) sheet.set(0); });
 
 const hintChip = document.querySelector('.hint-chip');
 document.getElementById('viewBtns').addEventListener('click', (e) => {
@@ -105,6 +156,8 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
       ? '✏️ Glissez fenêtres, portes, eau · cliquez un mur pour ajouter'
       : '💡 Cliquez sur un meuble pour le modifier';
   }
+  // en mobile, les vues Plan/Détail ont besoin de tout l'écran
+  if (mobileMq.matches && view !== 'ensemble') sheet.set(0);
   const v = viewPositions()[view];
   if (v) ctx.flyTo(v.pos, v.tgt, 1.3);
 });
@@ -224,6 +277,12 @@ export async function initApp() {
   document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
   if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current, state, setState };
 
+  // mobile : la 3D d'abord — devis en pastille, panneau en bottom-sheet
+  if (mobileMq.matches) {
+    document.getElementById('quote').classList.add('collapsed');
+    setupMobileSheet();
+  }
+
   const splash = document.getElementById('splash');
   document.getElementById('startBtn').addEventListener('click', () => {
     splash.classList.add('gone');
@@ -232,6 +291,11 @@ export async function initApp() {
     const v = viewPositions().ensemble;
     ctx.camera.position.set(9, 6, 12);
     ctx.flyTo(v.pos, v.tgt, 2.4);
+    // coachmark tactile : le hint desktop n'existe pas en mobile
+    if (mobileMq.matches && !sessionStorage.getItem('coach-tap')) {
+      sessionStorage.setItem('coach-tap', '1');
+      setTimeout(() => showToast('💡 Touchez un meuble pour le modifier'), 2800);
+    }
   });
 
   // position de départ douce derrière l'écran d'accueil

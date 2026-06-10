@@ -142,19 +142,33 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   border: 1px solid rgba(var(--paper-rgb), 0.6);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  display: flex; flex-direction: column;
   animation: slideInL 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.15s backwards;
 }
 @keyframes slideInL { from { opacity: 0; transform: translateX(-30px); } }
-.panel-scroll { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px 28px; scrollbar-width: thin; scrollbar-color: rgba(var(--ink-rgb),.25) transparent; }
+/* poignée du bottom-sheet — n'existe qu'en mobile */
+.sheet-grip { display: none; }
+.panel-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px 28px; scrollbar-width: thin; scrollbar-color: rgba(var(--ink-rgb),.25) transparent; }
 
-.sec { padding: 20px 0 6px; border-bottom: 1px solid var(--line); }
+.sec { padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
 .sec:last-child { border-bottom: none; }
-.sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 15px; }
+/* en-tête repliable (accordéon du parcours Express) */
+.sec-head {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 15px;
+  width: 100%; text-align: left; padding: 6px 0; cursor: pointer;
+}
 .sec-num {
   font-family: var(--font-display); font-style: italic; font-size: 15px;
   color: var(--brass); min-width: 18px;
 }
 .sec-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); }
+.sec-chev {
+  margin-left: auto; align-self: center; flex: none;
+  color: rgba(var(--ink-rgb), 0.4); transition: transform 0.3s;
+}
+.sec.closed .sec-chev { transform: rotate(-90deg); }
+.sec.closed .sec-head { margin-bottom: 4px; }
+.sec.closed .sec-body, .sec.closed .sec-note { display: none; }
 .sec-note { font-size: 12px; color: rgba(var(--ink-rgb), 0.55); margin: -8px 0 14px 28px; line-height: 1.5; }
 
 /* Cartes de forme */
@@ -503,10 +517,69 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   .hint-chip { display: none; }
 }
 @media (max-width: 860px) {
-  .panel { left: 10px; right: 10px; top: auto; bottom: 10px; width: auto; height: 44vh; }
-  .quote { top: 64px; right: 10px; width: calc(100% - 20px); max-width: 340px; }
-  .views { display: none; }
+  :root { --sheet-h: 45vh; }
+  .topbar { padding: 10px 12px; }
+  .brand-name { display: none; }
+  .views { padding: 4px; }
+  .views button { padding: 8px 13px; font-size: 12.5px; }
+  .top-action { width: 40px; height: 40px; }
+
+  /* ——— panneau = bottom-sheet à 3 états (pincé / mi-écran / plein) ——— */
+  .panel {
+    left: 0; right: 0; bottom: 0; top: auto; width: auto;
+    height: var(--sheet-h);
+    border-radius: 20px 20px 0 0; border-bottom: none;
+    transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: none;
+  }
+  .panel.dragging { transition: none; }
+  .sheet-grip {
+    display: grid; place-items: center; flex: none;
+    width: 100%; height: 30px; cursor: grab; touch-action: none;
+  }
+  .sheet-grip i {
+    width: 44px; height: 5px; border-radius: 999px;
+    background: rgba(var(--ink-rgb), 0.22);
+  }
+  .panel-scroll { padding: 0 16px 40px; }
+
+  /* ——— devis : pastille compacte repliée, surcouche lisible dépliée ——— */
+  .quote {
+    position: fixed; top: 58px; right: 10px; left: 10px; bottom: auto;
+    width: auto; max-width: none; z-index: 30;
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - 58px - var(--sheet-h) - 18px);
+    animation: none;
+  }
+  .quote-body { flex: 1; min-height: 0; display: flex; flex-direction: column; max-height: none; }
+  #quoteLines { flex: 1; min-height: 0; max-height: none; }
+  .quote.collapsed {
+    left: auto; right: 10px; border-radius: 999px;
+  }
+  /* replié : le corps ne doit pas imposer sa largeur à la pastille */
+  .quote.collapsed .quote-body { display: none; }
+  .quote.collapsed .quote-head { padding: 8px 8px 8px 16px; align-items: center; gap: 10px; }
+  .quote.collapsed .quote-label, .quote.collapsed .quote-monthly { display: none; }
+  .quote.collapsed .quote-total { font-size: 19px; }
+
+  /* ——— popover module = feuille basse, le meuble reste visible ——— */
+  .popover {
+    left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
+    border-radius: 20px 20px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    max-height: 52vh; overflow-y: auto;
+    animation: sheetUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .popover-opts button { padding: 12px 13px; }
+  .pop-chips .chip { padding: 10px 14px; font-size: 13px; }
+
+  /* éléments flottants : toujours au-dessus du sheet */
+  .nkba-chip { left: 10px; bottom: calc(var(--sheet-h) + 12px); max-width: calc(100vw - 20px); }
+  .nkba-list { width: min(420px, calc(100vw - 20px)); }
+  .toast { bottom: calc(var(--sheet-h) + 16px); max-width: calc(100vw - 24px); }
+  .elev-back { bottom: calc(var(--sheet-h) + 14px); }
+  .loadveil { bottom: calc(var(--sheet-h) + 14px); }
 }
+@keyframes sheetUp { from { opacity: 0; transform: translateY(40px); } }
 
 /* ————— Impression du devis ————— */
 @media print {

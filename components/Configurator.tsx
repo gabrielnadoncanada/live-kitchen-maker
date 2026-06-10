@@ -97,8 +97,11 @@ export default function Configurator() {
           </div>
         </header>
 
-        {/* Panneau de configuration (gauche) */}
+        {/* Panneau de configuration (gauche en desktop, bottom-sheet en mobile) */}
         <aside className="panel" id="panel">
+          <button className="sheet-grip" id="sheetGrip" aria-label="Réduire ou agrandir le panneau">
+            <i></i>
+          </button>
           <div className="panel-scroll" id="panelScroll"></div>
         </aside>
 

@@ -45,11 +45,36 @@ function el(html) {
   return t.content.firstElementChild;
 }
 
-function section(num, title, note = '') {
-  return el(`<div class="sec">
-    <div class="sec-head"><span class="sec-num">${num}</span><span class="sec-title">${title}</span></div>
+// Sections en accordéon : le parcours Express garde 01-03 ouvertes, le reste
+// (réglages de pro) se déplie à la demande. En mobile, une seule ouverte à la fois.
+function section(num, title, note = '', { collapsed = false } = {}) {
+  const sec = el(`<div class="sec ${collapsed ? 'closed' : ''}">
+    <button type="button" class="sec-head" aria-expanded="${!collapsed}">
+      <span class="sec-num">${num}</span><span class="sec-title">${title}</span>
+      <svg class="sec-chev" width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </button>
     ${note ? `<div class="sec-note">${note}</div>` : ''}
+    <div class="sec-body"></div>
   </div>`);
+  const body = sec.querySelector('.sec-body');
+  const head = sec.querySelector('.sec-head');
+  head.addEventListener('click', () => {
+    const closed = sec.classList.toggle('closed');
+    head.setAttribute('aria-expanded', String(!closed));
+    if (!closed && window.matchMedia('(max-width: 860px)').matches) {
+      sec.parentElement.querySelectorAll('.sec').forEach((s2) => {
+        if (s2 !== sec) {
+          s2.classList.add('closed');
+          s2.querySelector('.sec-head')?.setAttribute('aria-expanded', 'false');
+        }
+      });
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+  sec.append = (...nodes) => body.append(...nodes);
+  return sec;
 }
 
 // ——— nuancier générique ———
@@ -364,16 +389,9 @@ export function buildPanel() {
   ));
   root.append(s2);
 
-  // 3 · VOTRE PIÈCE (contraintes réelles)
-  const s2b = section('03', 'Votre pièce', 'Reproduisez la réalité : plomberie, fenêtres, portes. La cuisine se replanifie autour.');
-  s2b.append(fixtureControl('water', 'Entrée d’eau (évier)', 'L’évier se place sur la plomberie existante.'));
-  s2b.append(fixtureControl('stove', 'Prise de cuisinière (240 V)', 'La cuisinière et sa hotte suivent la prise.'));
-  s2b.append(openingsEditor('fenetre', 'Fenêtres', 'Ajouter une fenêtre', 0.6, 2.4, 1.25, 3));
-  s2b.append(openingsEditor('porte', 'Portes et passages', 'Ajouter une porte', 0.7, 1.8, 0.85, 2));
-  root.append(s2b);
-
-  // 4 · STYLE
-  const s3 = section('04', 'Le style', 'Une ambiance complète en un clic. Personnalisez ensuite chaque détail.');
+  // 3 · STYLE — promu avant les réglages de pièce : c'est l'étape émotionnelle
+  // du parcours Express (la promesse « forme → matières → devis » du hero)
+  const s3 = section('03', 'Le style', 'Une ambiance complète en un clic. Personnalisez ensuite chaque détail.');
   const presets = el('<div class="preset-grid"></div>');
   for (const [key, p] of Object.entries(PRESETS)) {
     const card = el(`<button class="preset-card" data-k="${key}">
@@ -395,8 +413,16 @@ export function buildPanel() {
   s3.append(presets);
   root.append(s3);
 
-  // 5 · ARMOIRES
-  const s4 = section('05', 'Les armoires');
+  // 4 · VOTRE PIÈCE (contraintes réelles) — replié : réglage avancé
+  const s2b = section('04', 'Votre pièce', 'Reproduisez la réalité : plomberie, fenêtres, portes. La cuisine se replanifie autour.', { collapsed: true });
+  s2b.append(fixtureControl('water', 'Entrée d’eau (évier)', 'L’évier se place sur la plomberie existante.'));
+  s2b.append(fixtureControl('stove', 'Prise de cuisinière (240 V)', 'La cuisinière et sa hotte suivent la prise.'));
+  s2b.append(openingsEditor('fenetre', 'Fenêtres', 'Ajouter une fenêtre', 0.6, 2.4, 1.25, 3));
+  s2b.append(openingsEditor('porte', 'Portes et passages', 'Ajouter une porte', 0.7, 1.8, 0.85, 2));
+  root.append(s2b);
+
+  // 5 · ARMOIRES — replié : personnalisation fine
+  const s4 = section('05', 'Les armoires', '', { collapsed: true });
   s4.append(segmented([['plate', 'Façade plane'], ['shaker', 'Façade shaker']], (s) => s.doorStyle, (k) => setState({ doorStyle: k, preset: null })));
   // REQ-1007 : hauteur des armoires murales (30/36 alignées aux colonnes, 42 au plafond 8 pi)
   s4.append(el('<div class="swatch-label"><span>Hauteur des armoires murales</span></div>'));
@@ -416,8 +442,8 @@ export function buildPanel() {
   s4.append(swatchGroup('Poignées', HANDLES, (s) => s.handle, (k) => setState({ handle: k, preset: null }), { columns: 4 }));
   root.append(s4);
 
-  // 6 · SURFACES
-  const s5 = section('06', 'Les surfaces');
+  // 6 · SURFACES — replié : personnalisation fine
+  const s5 = section('06', 'Les surfaces', '', { collapsed: true });
   s5.append(swatchGroup('Comptoir', COUNTERS, (s) => s.counter, (k) => setState({ counter: k, preset: null }), { priceKey: 'price' }));
   // REQ-912 : profil de chant (l'adouci est inclus, le bullnose se façonne au pi lin)
   s5.append(el('<div class="swatch-label"><span>Profil de chant</span></div>'));
@@ -430,10 +456,11 @@ export function buildPanel() {
   s5.append(swatchGroup('Murs', WALLS, (s) => s.wall, (k) => setState({ wall: k, preset: null })));
   root.append(s5);
 
-  // 7 · ÉLECTROMÉNAGERS
+  // 7 · ÉVIER ET ÉLECTROMÉNAGERS — replié : personnalisation fine
   const selling = getBusiness().sellAppliances;
-  const s6 = section('07', 'Les électroménagers',
-    selling ? '' : 'Pour planifier votre aménagement — non inclus au devis.');
+  const s6 = section('07', 'L’évier et les électros',
+    selling ? '' : 'Pour planifier votre aménagement — les électros ne sont pas inclus au devis.',
+    { collapsed: true });
   s6.append(segmented(
     Object.entries(APPLIANCE_FINISHES).map(([k, v]) => [k, v.label]),
     (s) => s.applianceFinish, (k) => setState({ applianceFinish: k })
@@ -694,10 +721,7 @@ export function showModuleEditor(x, y, data, comp) {
   }
   if (actions.children.length) opts.append(actions);
 
-  pop.hidden = false;
-  const r = pop.getBoundingClientRect();
-  pop.style.left = `${Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8)}px`;
-  pop.style.top = `${Math.min(Math.max(8, y - r.height - 18), window.innerHeight - r.height - 8)}px`;
+  placePopover(pop, x, y);
 }
 
 export function hidePopover() {
@@ -725,6 +749,21 @@ export function renderNkba(warnings) {
   chip.querySelector('.nkba-list').innerHTML = warnings
     .map((w) => `<div class="nkba-item"><b>${w.id}</b> ${w.msg}</div>`)
     .join('');
+}
+
+// positionne un popover près du point cliqué (desktop) ou en feuille basse
+// plein-largeur (mobile) — où l'on pince aussi le sheet pour garder la 3D visible
+function placePopover(pop, x, y) {
+  pop.hidden = false;
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    pop.style.left = '';
+    pop.style.top = '';
+    document.dispatchEvent(new CustomEvent('sheet:peek'));
+    return;
+  }
+  const r = pop.getBoundingClientRect();
+  pop.style.left = `${Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8)}px`;
+  pop.style.top = `${Math.min(Math.max(8, y - r.height - 18), window.innerHeight - r.height - 8)}px`;
 }
 
 // petit toast de confirmation (lien copié, photo téléchargée…)
@@ -757,8 +796,5 @@ export function showMenu(x, y, title, options) {
     });
     opts.append(b);
   }
-  pop.hidden = false;
-  const r = pop.getBoundingClientRect();
-  pop.style.left = `${Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8)}px`;
-  pop.style.top = `${Math.min(Math.max(8, y - r.height - 18), window.innerHeight - r.height - 8)}px`;
+  placePopover(pop, x, y);
 }

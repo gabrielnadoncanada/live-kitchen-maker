@@ -29,7 +29,9 @@ export function computeQuote(state, manifest) {
     const unit = Math.round(it.unit * (it.finishMult ? (zoneMult[it.zone] || mult) : 1));
     const total = unit * it.qty;
     cabTotal += total;
-    cabLines.push({ name: it.label, detail: `${it.qty} × ${fmt(unit)} · ${it.sku}`, value: total });
+    // les codes SKU n'apparaissent que si le tenant le demande (bon de commande)
+    const sku = biz.showSkus ? ` · ${it.sku}` : '';
+    cabLines.push({ name: it.label, detail: `${it.qty} × ${fmt(unit)}${sku}`, value: total });
   }
   for (const [key, count] of Object.entries(manifest.modules)) {
     const def = MODULE_PRICES[key];

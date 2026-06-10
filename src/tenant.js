@@ -27,6 +27,8 @@ const DEFAULTS = {
     // les électroménagers servent à la planification 3D ; ils ne sont facturés
     // que si le cuisiniste en vend (rare)
     sellAppliances: false,
+    // les codes SKU parlent au cuisiniste, pas au client final — opt-in par tenant
+    showSkus: false,
     taxes: [
       { label: 'TPS (5 %)', rate: 0.05 },
       { label: 'TVQ (9,975 %)', rate: 0.09975 },
