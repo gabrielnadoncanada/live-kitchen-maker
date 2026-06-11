@@ -647,7 +647,23 @@ function normalizePlan(widths, types, hinges) {
 }
 function writePlan(gapKey, widths, types, hinges = null) {
   if (widths) ({ widths, types, hinges } = normalizePlan(widths, types, hinges));
-  setState({ gapPlans: { [gapKey]: widths && widths.length ? { widths, types, hinges } : null } });
+  const patch = { [gapKey]: widths && widths.length ? { widths, types, hinges } : null };
+  // purge des plans périmés du même mur dont l'empreinte ABSOLUE chevauche
+  // celle qu'on écrit (gaps re-découpés après déplacement d'un électro, d'une
+  // fenêtre… — la reconstruction par positions absolues les a déjà absorbés)
+  const km = /^(.+:[gu])(\d+)$/.exec(gapKey);
+  if (km && widths) {
+    const start = parseInt(km[2], 10);
+    const end = start + widths.reduce((a, b) => a + b, 0);
+    for (const [k, p] of Object.entries(state.gapPlans || {})) {
+      if (k === gapKey || !p || !k.startsWith(km[1])) continue;
+      const a0 = parseInt(k.slice(km[1].length), 10);
+      if (!Number.isFinite(a0)) continue;
+      const a1 = a0 + (p.widths || []).reduce((x, y) => x + y, 0);
+      if (a0 < end && a1 > start) patch[k] = null;
+    }
+  }
+  setState({ gapPlans: patch });
 }
 
 // Change la largeur du caisson idx à newW (po) ; les voisins absorbent la

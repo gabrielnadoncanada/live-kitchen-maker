@@ -417,6 +417,23 @@ function arrowTarget(dir) {
 
 const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
 
+// geler la composition actuelle d'un mur en plans explicites : après le
+// retrait ou le déplacement d'un électro, la reconstruction par positions
+// absolues préserve chaque caisson À SA PLACE — l'espace libéré reste vide
+// au lieu d'être re-rempli automatiquement
+function freezeWallPlans(wall) {
+  const patch = {};
+  for (const [k, c] of Object.entries(current.gapComps || {})) {
+    if (!k.startsWith(`${wall}:`)) continue;
+    patch[k] = {
+      widths: [...c.widths],
+      types: [...c.types],
+      hinges: c.widths.map((_, i) => (c.hinges || [])[i] ?? null),
+    };
+  }
+  return patch;
+}
+
 // décaler un électro de 3 po (le solveur revalide : fenêtres, dégagements…)
 function nudgeFixture(dir) {
   const ud = selection.ud;
@@ -481,16 +498,19 @@ modbar.querySelector('.mb-del').addEventListener('click', (e) => {
     setState({ constraints: { openings: state.constraints.openings.filter((o) => o.id !== id) } });
     return;
   }
-  // électro : retirer = désactiver l'appareil (la hotte part avec la cuisinière)
+  // électro : retirer = désactiver l'appareil (la hotte part avec la
+  // cuisinière) — le mur est gelé pour que sa place reste un espace VIDE et
+  // que les caissons voisins ne bougent pas
   if (selection.ud.fixture) {
     const off = {
       stove: { range: false, hood: false }, fridge: { fridge: false },
       dw: { dw: false }, water: { sink: false },
     }[selection.ud.fixture];
     if (!off) return flashDeny(e.currentTarget);
+    const frozen = freezeWallPlans(selection.ud.wall);
     deselectModule();
     hidePopover();
-    setState({ appliances: off });
+    setState({ appliances: off, gapPlans: frozen });
     return;
   }
   const comp = current.gapComps[selection.key];
@@ -614,12 +634,19 @@ canvas.addEventListener('pointermove', (e) => {
   // une application est en vol : attendre la reconstruction, sinon on
   // recalculerait la cible sur des compositions périmées
   if (moveDrag.pending) return;
-  // électro : position manuelle continue, revalidée par le solveur à chaque pas
+  // électro : position manuelle continue, revalidée par le solveur à chaque
+  // pas — au premier mouvement le mur est gelé pour que les caissons gardent
+  // leur place exacte pendant que l'électro circule
   if (selection.ud.fixture) {
     const pos = fixtureDragPos(e);
     if (pos == null) return;
     moveDrag.pending = true;
-    setState({ constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos } } });
+    const patch = { constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos } } };
+    if (!moveDrag.froze) {
+      moveDrag.froze = true;
+      patch.gapPlans = freezeWallPlans(selection.ud.wall);
+    }
+    setState(patch);
     return;
   }
   // fenêtre / porte : glisse le long du mur, anti-chevauchement REQ-802

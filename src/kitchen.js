@@ -1449,6 +1449,25 @@ export function buildKitchen(state) {
       } else acc.push(p);
       return acc;
     }, []);
+    // un filler dont la séquence contiguë ne contient AUCUN caisson réel
+    // devient du vide — sinon une lamelle orpheline resterait flotter (avec
+    // son panneau de bout et sa couronne) après la suppression du caisson voisin
+    const orphanFillers = (pieces) => {
+      let i = 0;
+      while (i < pieces.length) {
+        if (pieces[i].planType === 'vide') { i++; continue; }
+        let j = i, real = false;
+        while (j < pieces.length && pieces[j].planType !== 'vide') {
+          if (!pieces[j].filler) real = true;
+          j++;
+        }
+        if (!real) {
+          for (let q = i; q < j; q++) pieces[q] = { ...pieces[q], filler: false, planType: 'vide', planHinge: null };
+        }
+        i = j;
+      }
+      return pieces;
+    };
     const plan = (state.gapPlans || {})[gapKey];
     if (plan && Array.isArray(plan.widths) && plan.widths.length) {
       const sum = plan.widths.reduce((s, w) => s + w, 0);
@@ -1465,32 +1484,52 @@ export function buildKitchen(state) {
             ? { w: rest * IN, widthIn: rest, filler: false, planType: 'vide', planHinge: null }
             : { w: rest * IN, widthIn: rest, filler: true });
         }
-        return mergeVides(out);
+        return mergeVides(orphanFillers(out));
       }
-      // plan périmé (le gap a changé : appareil inséré, mur redimensionné…) —
-      // en page blanche on TRONQUE au lieu de tout perdre : les caissons qui
-      // tiennent encore restent (tassés à gauche), le surplus redevient vide
-      if (state.autoFill === false) {
-        const out = [];
-        let acc = 0;
-        for (let i = 0; i < plan.widths.length; i++) {
-          if (plan.types?.[i] === 'vide') continue;
-          if (acc + plan.widths[i] > totalIn + 0.05) break;
-          out.push({
-            w: plan.widths[i] * IN, widthIn: plan.widths[i], filler: false,
-            planType: plan.types?.[i] || null, planHinge: plan.hinges?.[i] || null,
-          });
-          acc += plan.widths[i];
+    }
+    // Reconstruction par positions ABSOLUES — dès que des caissons mémorisés
+    // tombent dans ce gap (électro déplacé/retiré, fenêtre bougée, mur
+    // redimensionné), ils gardent leur place exacte au mur au lieu d'être
+    // tassés ou remplacés par du remplissage auto. Un caisson recouvert par
+    // l'obstacle est simplement omis (il revient si on le découvre).
+    const km = /^(.+:[gu])(\d+)$/.exec(gapKey);
+    if (km) {
+      const pre = km[1];
+      const newStart = parseInt(km[2], 10);
+      const cands = [];
+      for (const [k, p] of Object.entries(state.gapPlans || {})) {
+        if (!p || !k.startsWith(pre) || !Array.isArray(p.widths)) continue;
+        const anchor = parseInt(k.slice(pre.length), 10);
+        if (!Number.isFinite(anchor)) continue;
+        let cum = anchor;
+        for (let i = 0; i < p.widths.length; i++) {
+          const wi = p.widths[i];
+          const ty = p.types?.[i];
+          if (ty && ty !== 'vide' && cum >= newStart - 0.5 && cum + wi <= newStart + totalIn + 0.5) {
+            cands.push({ at: cum, w: wi, type: ty, hinge: p.hinges?.[i] || null });
+          }
+          cum += wi;
         }
-        const restV = totalIn - acc;
-        if (restV * IN >= 0.012) out.push({ w: restV * IN, widthIn: restV, filler: false, planType: 'vide', planHinge: null });
+      }
+      if (cands.length) {
+        cands.sort((p2, q2) => p2.at - q2.at);
+        const out = [];
+        let cur = 0; // offset courant dans le gap (po)
+        for (const c2 of cands) {
+          const off = Math.max(0, c2.at - newStart);
+          if (off < cur - 0.05) continue; // chevauche le précédent (plans concurrents)
+          if (off + c2.w > totalIn + 0.05) continue;
+          if (off - cur >= 0.05) out.push({ w: (off - cur) * IN, widthIn: off - cur, filler: false, planType: 'vide', planHinge: null });
+          out.push({ w: c2.w * IN, widthIn: c2.w, filler: false, planType: c2.type, planHinge: c2.hinge });
+          cur = Math.max(cur, off) + c2.w;
+        }
+        if (totalIn - cur >= 0.05) out.push({ w: (totalIn - cur) * IN, widthIn: totalIn - cur, filler: false, planType: 'vide', planHinge: null });
         return mergeVides(out);
       }
     }
-    // page blanche (autoFill désactivé) : aucun remplissage automatique — tout
-    // l'espace libre devient un grand « espace vide » à peupler au clic
+    // page blanche : aucun remplissage automatique — un grand espace vide
     if (state.autoFill === false) {
-      return [{ w: len, widthIn: len / IN, filler: false, planType: 'vide', planHinge: null }];
+      return [{ w: len, widthIn: totalIn, filler: false, planType: 'vide', planHinge: null }];
     }
     return catalogWidths(len);
   }
