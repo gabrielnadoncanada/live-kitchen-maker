@@ -5,8 +5,9 @@ import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, moduleTypeLabel } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, placeModuleAt, moduleTypeLabel } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
+import { IN } from './skuCatalog.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
@@ -353,8 +354,9 @@ function positionModbar() {
 }
 
 // préfixe de genre d'un gap : 'back:g' (bas), 'back:u' (murales), 'isl' (îlot) —
-// les déplacements ne traversent jamais les genres
-const gapPrefix = (key) => (key === 'isl' ? 'isl' : key.slice(0, key.search(/\d+$/)));
+// les déplacements ne traversent jamais les genres. Les hitbox sans gapKey
+// (électros, coins, ouvertures) donnent null.
+const gapPrefix = (key) => (!key ? null : key === 'isl' ? 'isl' : key.slice(0, key.search(/\d+$/)));
 
 // gaps du même mur ET du même genre que key, triés par position de départ
 function gapsLike(key) {
@@ -537,8 +539,17 @@ function dragTarget(e) {
   for (const m of others) {
     if (alongM > alongAxis(wall, m.getWorldPosition(tmpA), f)) p++;
   }
-  const idx = gapReversed(gKey, wall, f) ? others.length - p : p;
-  return { key: gKey, idx };
+  const rev = gapReversed(gKey, wall, f);
+  const idx = rev ? others.length - p : p;
+  // position visée dans le gap (po depuis son début, dans le sens des index) —
+  // pour le placement « position préservée » dans les plages vides
+  const startIn = gKey === 'isl'
+    ? (current.islandRect.x0 + 0.04) / IN
+    : parseInt(gKey.slice(gapPrefix(gKey).length), 10);
+  const totalIn = current.gapComps[gKey]?.totalIn ?? 0;
+  const alongIn = alongM / IN;
+  const offIn = rev ? startIn + totalIn - alongIn : alongIn - startIn;
+  return { key: gKey, idx, offIn };
 }
 
 // saisie DIRECTE : pointer sur n'importe quel caisson ou électro = le
@@ -622,14 +633,38 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
   const t = dragTarget(e);
-  if (!t || (t.key === selection.key && t.idx === selection.idx)) return;
+  if (!t) return;
   // mémoriser les plans d'origine des gaps touchés (annulation par Échap)
-  for (const k of [selection.key, t.key]) {
-    if (!moveDrag.savedKeys.has(k)) {
-      moveDrag.savedKeys.add(k);
-      moveDrag.saved[k] = (state.gapPlans || {})[k] ?? null;
+  const remember = () => {
+    for (const k of [selection.key, t.key]) {
+      if (!moveDrag.savedKeys.has(k)) {
+        moveDrag.savedKeys.add(k);
+        moveDrag.saved[k] = (state.gapPlans || {})[k] ?? null;
+      }
+    }
+  };
+  // 1) placement « position préservée » : le caisson suit le curseur dans les
+  // plages vides, RIEN d'autre ne bouge (la place quittée reste vide)
+  const comp0 = current.gapComps[selection.key];
+  if (comp0) {
+    // ignorer les micro-mouvements (le caisson est déjà à ±1,5 po du curseur)
+    if (t.key === selection.key) {
+      const c0 = comp0.widths.slice(0, selection.idx).reduce((a2, b2) => a2 + b2, 0) + comp0.widths[selection.idx] / 2;
+      if (Math.abs(c0 - t.offIn) < 1.5) return;
+    }
+    const r = placeModuleAt(current.gapComps, selection.key, selection.idx, t.key, t.offIn);
+    if (r) {
+      remember();
+      selection.key = t.key;
+      selection.idx = r.idx;
+      setState({ gapPlans: r.plans });
+      moveDrag.pending = true;
+      return;
     }
   }
+  // 2) gap plein (cuisine proposée) : réordonnancement classique
+  if (t.key === selection.key && t.idx === selection.idx) return;
+  remember();
   if (applySelectionMove(t.key, t.idx)) moveDrag.pending = true;
 }, { capture: true });
 

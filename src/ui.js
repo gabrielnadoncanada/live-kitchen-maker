@@ -778,6 +778,70 @@ export function reorderModule(comps, srcKey, srcIdx, dstKey, dstIdx) {
   };
 }
 
+// Déplacement « position préservée » (drag) : la place quittée devient un
+// espace vide de même largeur — AUCUN voisin ne bouge — et le caisson se pose
+// au plus près du curseur dans une plage libre (snap contre un voisin sous
+// 3 po). offIn = centre visé, en pouces depuis le début du gap destination.
+// Retourne { plans, idx } ou null si aucune plage libre ne peut l'accueillir
+// (gap plein → l'appelant retombe sur le réordonnancement classique).
+export function placeModuleAt(comps, srcKey, srcIdx, dstKey, offIn) {
+  const src = comps[srcKey];
+  if (!src || srcIdx < 0 || srcIdx >= src.widths.length) return null;
+  const dst0 = comps[dstKey];
+  if (srcKey !== dstKey && (!dst0 || src.exact || dst0.exact || !!src.upper !== !!dst0.upper)) return null;
+  const aligned = (c) => c.widths.map((_, i) => (c.hinges || [])[i] ?? null);
+  const w = src.widths[srcIdx], t = src.types[srcIdx], h = aligned(src)[srcIdx];
+  if (t === 'vide') return null;
+  // 1) la place quittée devient un vide de même largeur
+  const sw = [...src.widths], st = [...src.types], sh = aligned(src);
+  st[srcIdx] = 'vide';
+  sh[srcIdx] = null;
+  // 2) destination (mêmes tableaux si même gap), vides adjacents fusionnés
+  const same = srcKey === dstKey;
+  let { widths: dw, types: dt, hinges: dh } =
+    normalizePlan(same ? sw : [...dst0.widths], same ? st : [...dst0.types], same ? sh : aligned(dst0));
+  // 3) centres admissibles dans les plages vides assez larges
+  const starts = [];
+  let cum = 0;
+  const cands = [];
+  for (let i = 0; i < dw.length; i++) {
+    starts.push(cum);
+    if (dt[i] === 'vide' && dw[i] + 0.05 >= w) cands.push({ i, lo: cum + w / 2, hi: cum + dw[i] - w / 2 });
+    cum += dw[i];
+  }
+  if (!cands.length) return null;
+  let best = null, bd = Infinity;
+  for (const c of cands) {
+    const x = Math.min(Math.max(offIn, c.lo), c.hi);
+    const d = Math.abs(x - offIn);
+    if (d < bd) { bd = d; best = { ...c, x }; }
+  }
+  // 4) scinder le vide : [vide gauche, caisson, vide droit] — un résidu < 3 po
+  // se reporte de l'autre côté (le caisson se colle au voisin, pas de lamelle)
+  let leftW = best.x - w / 2 - starts[best.i];
+  let rightW = dw[best.i] - leftW - w;
+  if (leftW < 3) { rightW += leftW; leftW = 0; }
+  if (rightW < 3) { leftW += rightW; rightW = 0; }
+  if (leftW < 3 && leftW > 0) { rightW += leftW; leftW = 0; } // plage ≈ largeur du caisson
+  const ins = [];
+  if (leftW > 0.05) ins.push([leftW, 'vide', null]);
+  ins.push([w, t, h]);
+  if (rightW > 0.05) ins.push([rightW, 'vide', null]);
+  dw.splice(best.i, 1, ...ins.map((p) => p[0]));
+  dt.splice(best.i, 1, ...ins.map((p) => p[1]));
+  dh.splice(best.i, 1, ...ins.map((p) => p[2]));
+  const idx = best.i + (leftW > 0.05 ? 1 : 0);
+  if (same) return { plans: { [dstKey]: { widths: dw, types: dt, hinges: dh } }, idx };
+  const ns = normalizePlan(sw, st, sh);
+  return {
+    plans: {
+      [srcKey]: ns.widths.length ? { widths: ns.widths, types: ns.types, hinges: ns.hinges } : null,
+      [dstKey]: { widths: dw, types: dt, hinges: dh },
+    },
+    idx,
+  };
+}
+
 export function showModuleEditor(x, y, data, comp) {
   const pop = document.getElementById('popover');
   const opts = document.getElementById('popoverOpts');
