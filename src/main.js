@@ -6,6 +6,7 @@ import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
 import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, moduleTypeLabel } from './ui.js';
+import { resolveOpeningPos } from './openings.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
@@ -46,13 +47,15 @@ function rebuild() {
   renderQuote(lastQuote);
   renderNkba(computeNkbaWarnings(current.nkba));
 
-  // la sélection (module, électro ou coin) survit aux reconstructions
+  // la sélection (module, électro, coin ou ouverture) survit aux reconstructions
   if (selection) {
     const m = selection.ud.fixture
       ? current.editables.find((e2) => e2.userData.fixture === selection.ud.fixture)
       : selection.ud.corner
         ? current.editables.find((e2) => e2.userData.corner === selection.ud.corner)
-        : findEditable(selection.key, selection.idx);
+        : selection.ud.opening
+          ? current.editables.find((e2) => e2.userData.opening === selection.ud.opening)
+          : findEditable(selection.key, selection.idx);
     if (m) attachSelection(m);
     else deselectModule();
   }
@@ -210,13 +213,23 @@ canvas.addEventListener('pointerup', (e) => {
 function pickModule(x, y) {
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  const modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
+  // les hitbox d'un mur escamoté (maison de poupée) ne se cliquent pas à travers
+  let modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
+  if (modHit && !chainVisible(modHit.object)) modHit = null;
   const surfHit = findSurfaceHit();
   // le plus proche gagne : on n'édite pas un caisson à travers son comptoir.
   // Tolérance 5 cm : la façade réelle (portes, panneaux cascade de l'îlot)
   // flotte jusqu'à ~4 cm devant la hitbox du module.
   if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.05)) {
     const ud = modHit.object.userData;
+    // fenêtre / porte : sélection simple (glisser, décaler, retirer)
+    if (ud.opening) {
+      if (!selection || selection.mesh !== modHit.object) {
+        hidePopover();
+        selectModule(modHit.object);
+      }
+      return;
+    }
     // coin : sélection simple (retirer / remettre via la barre)
     if (ud.corner) {
       if (!selection || selection.mesh !== modHit.object) {
@@ -283,23 +296,28 @@ function attachSelection(mesh) {
     ? { fixture: ud.fixture, ud, mesh }
     : ud.corner
       ? { corner: ud.corner, ud, mesh }
-      : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
+      : ud.opening
+        ? { opening: ud.opening, ud, mesh }
+        : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
   modbar.querySelector('.mb-title').textContent = ud.fixture
     ? `${FIXTURE_TITLES[ud.fixture]} · ${Math.round(ud.widthIn)} po`
     : ud.corner
-      ? `${CORNER_TITLES[ud.corner]}${ud.current === 'vide' ? ' · vide' : ` · ${Math.round(ud.widthIn)} po`}`
-      : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
-  // un espace vide se « remplit » plutôt qu'il ne se paramètre ; l'évier
-  // (plomberie) ne se retire pas ; les coins ne se déplacent pas
+      ? `${CORNER_TITLES[ud.corner]} · ${Math.round(ud.widthIn)} po`
+      : ud.opening
+        ? `${ud.openingType === 'fenetre' ? 'Fenêtre' : 'Porte'} · ${Math.round(ud.width * 100)} cm`
+        : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+  // un espace vide se « remplit » plutôt qu'il ne se paramètre ; les coins et
+  // les ouvertures n'ont pas de paramètres ; un coin ne se déplace pas
   modbar.querySelector('.mb-edit').textContent = ud.current === 'vide' ? '➕ Ajouter' : '✏️ Paramètres';
-  modbar.querySelector('.mb-edit').style.display = (ud.corner && ud.current !== 'vide') ? 'none' : '';
-  modbar.querySelector('.mb-del').style.display = (ud.current === 'vide' || ud.fixture === 'water') ? 'none' : '';
+  modbar.querySelector('.mb-edit').style.display = (ud.corner || ud.opening) ? 'none' : '';
+  modbar.querySelector('.mb-del').style.display = ud.current === 'vide' ? 'none' : '';
   const noMove = !!ud.corner;
   modbar.querySelector('.mb-left').style.display = noMove ? 'none' : '';
   modbar.querySelector('.mb-right').style.display = noMove ? 'none' : '';
   modbar.hidden = false;
   positionModbar();
 }
+document.addEventListener('atelier:deselect', () => { deselectModule(); hidePopover(); });
 
 function selectModule(mesh) {
   attachSelection(mesh);
@@ -316,11 +334,16 @@ function deselectModule() {
   modbar.hidden = true;
 }
 
-// la barre suit le caisson sélectionné (projection écran, recalée chaque frame)
+// la barre suit le caisson sélectionné (projection écran, recalée chaque frame) ;
+// elle s'efface si le point passe derrière la caméra ou si le mur est escamoté
 function positionModbar() {
   if (!selection || modbar.hidden) return;
   const v = new THREE.Vector3();
   selection.mesh.getWorldPosition(v);
+  const behind = v.clone().applyMatrix4(ctx.camera.matrixWorldInverse).z > -0.1;
+  const masked = !chainVisible(selection.mesh);
+  modbar.style.visibility = behind || masked ? 'hidden' : 'visible';
+  if (behind || masked) return;
   v.project(ctx.camera);
   const r = modbar.getBoundingClientRect();
   const x = ((v.x + 1) / 2) * window.innerWidth - r.width / 2;
@@ -400,15 +423,26 @@ function nudgeFixture(dir) {
   setState({ constraints: { [ud.fixture]: { auto: false, wall: ud.wall, pos } } });
 }
 
+// décaler une fenêtre/porte de 3 po (anti-chevauchement REQ-802 respecté)
+function nudgeOpening(dir) {
+  const ud = selection.ud;
+  const p = resolveOpeningPos(state, ud.wall, ud.width, ud.along + dir * 0.075, ud.opening);
+  if (p == null) return false;
+  setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === ud.opening ? { ...o, pos: p } : o)) } });
+  return true;
+}
+
 modbar.querySelector('.mb-left').addEventListener('click', (e) => {
   if (!selection) return;
   if (selection.ud.fixture) return nudgeFixture(-1);
+  if (selection.ud.opening) return void (nudgeOpening(-1) || flashDeny(e.currentTarget));
   const t = arrowTarget(-1);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
 });
 modbar.querySelector('.mb-right').addEventListener('click', (e) => {
   if (!selection) return;
   if (selection.ud.fixture) return nudgeFixture(1);
+  if (selection.ud.opening) return void (nudgeOpening(1) || flashDeny(e.currentTarget));
   const t = arrowTarget(1);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
 });
@@ -429,14 +463,28 @@ modbar.querySelector('.mb-edit').addEventListener('click', () => {
 });
 modbar.querySelector('.mb-del').addEventListener('click', (e) => {
   if (!selection) return;
-  // coin : retirer → espace mort (réservation conservée, ré-ajout au clic)
+  // coin : retirer → sa zone est rendue au ruban (ré-ajout depuis l'espace vide)
   if (selection.ud.corner) {
-    setState({ cornerOff: { [selection.ud.corner]: true } });
+    const k = selection.ud.corner;
+    deselectModule();
+    hidePopover();
+    setState({ cornerOff: { [k]: true } });
+    return;
+  }
+  // fenêtre / porte : retirer l'ouverture
+  if (selection.ud.opening) {
+    const id = selection.ud.opening;
+    deselectModule();
+    hidePopover();
+    setState({ constraints: { openings: state.constraints.openings.filter((o) => o.id !== id) } });
     return;
   }
   // électro : retirer = désactiver l'appareil (la hotte part avec la cuisinière)
   if (selection.ud.fixture) {
-    const off = { stove: { range: false, hood: false }, fridge: { fridge: false }, dw: { dw: false } }[selection.ud.fixture];
+    const off = {
+      stove: { range: false, hood: false }, fridge: { fridge: false },
+      dw: { dw: false }, water: { sink: false },
+    }[selection.ud.fixture];
     if (!off) return flashDeny(e.currentTarget);
     deselectModule();
     hidePopover();
@@ -501,7 +549,7 @@ canvas.addEventListener('pointerdown', (e) => {
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
   const modHit = raycaster.intersectObjects(current.editables, false)[0];
-  if (!modHit) return;
+  if (!modHit || !chainVisible(modHit.object)) return;
   // occlusion : à travers un comptoir ou l'îlot, le geste reste une rotation
   const surfHit = findSurfaceHit();
   if (surfHit && modHit.distance > surfHit.distance + 0.05) return;
@@ -519,7 +567,9 @@ canvas.addEventListener('pointerdown', (e) => {
     x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh,
     home: selection.ud.fixture
       ? { fixture: selection.ud.fixture, orig: JSON.parse(JSON.stringify(state.constraints[selection.ud.fixture] || null)) }
-      : { key: selection.key, idx: selection.idx },
+      : selection.ud.opening
+        ? { opening: selection.ud.opening, orig: JSON.parse(JSON.stringify(state.constraints.openings.find((o) => o.id === selection.ud.opening) || null)) }
+        : { key: selection.key, idx: selection.idx },
     saved: {}, savedKeys: new Set(),
   };
   ctx.controls.enabled = false;
@@ -561,6 +611,16 @@ canvas.addEventListener('pointermove', (e) => {
     setState({ constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos } } });
     return;
   }
+  // fenêtre / porte : glisse le long du mur, anti-chevauchement REQ-802
+  if (selection.ud.opening) {
+    const raw = fixtureDragPos(e);
+    if (raw == null) return;
+    const p = resolveOpeningPos(state, selection.ud.wall, selection.ud.width, raw, selection.ud.opening);
+    if (p == null) return;
+    moveDrag.pending = true;
+    setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === selection.ud.opening ? { ...o, pos: p } : o)) } });
+    return;
+  }
   const t = dragTarget(e);
   if (!t || (t.key === selection.key && t.idx === selection.idx)) return;
   // mémoriser les plans d'origine des gaps touchés (annulation par Échap)
@@ -584,6 +644,8 @@ function endModuleDrag(cancelled = false) {
   if (cancelled && selection) {
     if (d.home.fixture) {
       setState({ constraints: { [d.home.fixture]: d.home.orig } });
+    } else if (d.home.opening && d.home.orig) {
+      setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === d.home.opening ? d.home.orig : o)) } });
     } else if (d.savedKeys.size) {
       selection.key = d.home.key;
       selection.idx = d.home.idx;

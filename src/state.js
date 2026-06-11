@@ -34,7 +34,7 @@ export const state = {
   backsplash: 'zellige-blanc',
   floor: 'beton-poli',
   wall: 'blanc-casse',
-  appliances: { fridge: true, range: true, hood: true, dw: true },
+  appliances: { fridge: true, range: true, hood: true, dw: true, sink: true },
   sinkStyle: 'encastre',  // 'encastre' | 'farmhouse' — évier à tablier FSBC (REQ-908)
   sinkBowls: 'simple',    // 'simple' | 'double' (REQ-908)
   faucetStyle: 'colcygne',// 'colcygne' | 'pont' | 'pro' (REQ-908)

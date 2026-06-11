@@ -82,9 +82,10 @@ const scenarios = [
     layout: 'l', island: true, islandMode: 'peninsule', islandFeature: 'evier',
     cooking: 'mural', sinkStyle: 'farmhouse',
   }],
-  ['page blanche (autoFill off, sans électros)', {
+  ['page blanche (autoFill off, vraiment vide)', {
     autoFill: false, island: false,
-    appliances: { fridge: false, range: false, hood: false, dw: false },
+    appliances: { fridge: false, range: false, hood: false, dw: false, sink: false },
+    cornerOff: { bl: true, br: true, ul: true, ur: true },
   }],
   ['page blanche peuplée (caissons + frigo épinglé)', {
     autoFill: false, island: false,
@@ -114,7 +115,8 @@ for (const [name, patch] of scenarios) {
     layout: 'l', island: true, islandMode: 'libre', islandFeature: 'aucun', autoFill: true,
     dims: { a: 4.4, b: 3.2, c: 3.0 }, ceiling: 9, wallCabHeight: 30,
     cooking: 'cuisiniere', hoodType: 'cheminee', sinkStyle: 'encastre',
-    appliances: { fridge: true, range: true, hood: true, dw: true },
+    appliances: { fridge: true, range: true, hood: true, dw: true, sink: true },
+    cornerOff: { bl: false, br: false, ul: false, ur: false },
     constraints: {
       water: { auto: true, wall: 'back', pos: 2.2 },
       stove: { auto: true, wall: 'back', pos: 3.4 },

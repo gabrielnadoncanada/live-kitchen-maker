@@ -1215,12 +1215,14 @@ export function buildKitchen(state) {
     }
     return segs.filter(([s0, s1]) => s1 - s0 >= minLen);
   }
-  // bande d'un mur entre ses réserves de coin
+  // bande d'un mur entre ses réserves de coin — un coin RETIRÉ rend sa zone au
+  // ruban du mur arrière (un seul grand espace), le mur perpendiculaire garde
+  // sa réserve : les deux rubans ne peuvent pas se rejoindre en collision
   function wallBand(wallKey, y0, y1, winMargin, minLen) {
     let lo, hi;
     if (wallKey === 'back') {
-      lo = cornerL ? CORNER : 0.02;
-      hi = cornerR ? a - CORNER : a - 0.02;
+      lo = cornerOnL ? CORNER : 0.02;
+      hi = cornerOnR ? a - CORNER : a - 0.02;
     } else if (wallKey === 'front') {
       lo = 0.02;                 // les deux rangées d'un couloir n'ont pas de coin
       hi = a - 0.02;
@@ -1321,12 +1323,12 @@ export function buildKitchen(state) {
   // REQ-1008 : frigo et lave-vaisselle déplaçables en vue plan (positions manuelles)
   const consFridge = cons.fridge && !cons.fridge.auto && cabWalls.includes(cons.fridge.wall) ? cons.fridge : null;
   const consDw = cons.dw && !cons.dw.auto && cabWalls.includes(cons.dw.wall) ? cons.dw : null;
-  if (islFeature !== 'evier') {
-    addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
-    if (state.appliances.dw) {
-      if (consDw) addFixed(consDw.wall, 'lavevaisselle', DW_W, consDw.pos, 4);
-      else addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
-    }
+  // l'évier se retire aussi (page blanche : la cuisine démarre vraiment vide)
+  const wantSink = islFeature !== 'evier' && state.appliances.sink !== false;
+  if (wantSink) addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
+  if (state.appliances.dw && islFeature !== 'evier') {
+    if (consDw) addFixed(consDw.wall, 'lavevaisselle', DW_W, consDw.pos, 4);
+    else if (wantSink) addFixed(sinkWall, 'lavevaisselle', DW_W, sinkAlong + SINK_W / 2 + DW_W / 2 + 0.01, 4);
   }
   if (state.appliances.range && islFeature !== 'plaque') {
     addFixed(stoveWall, cookingMural ? 'plaque' : 'cuisiniere', RANGE_W, stoveAlong, 2);
@@ -1407,6 +1409,28 @@ export function buildKitchen(state) {
   })();
 
   const editables = [];
+  // fenêtres et portes : saisissables en 3D aussi (glisser le long du mur,
+  // retirer) — accrochées au groupe de leur mur pour suivre le masquage
+  for (const wk of ['back', 'left', 'right', 'front']) {
+    if (!wallPlane[wk]) continue;
+    for (const o of [...winsByWall[wk], ...doorsByWall[wk]]) {
+      const isWin = o.type === 'fenetre';
+      const h = isWin ? WIN_Y1 - WIN_Y0 : 2.05;
+      const hit = new THREE.Mesh(
+        new THREE.BoxGeometry(o.width, h, 0.18),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      const p = centeredPlacement(wk, o.pos, isWin ? (WIN_Y0 + WIN_Y1) / 2 : 2.05 / 2);
+      hit.position.copy(p.pos);
+      hit.rotation.y = p.rotY;
+      hit.userData = {
+        editable: true, opening: o.id, openingType: o.type,
+        wall: wk, along: o.pos, width: o.width,
+      };
+      wallGroups[wk].add(hit);
+      editables.push(hit);
+    }
+  }
   const placed = { evier: null, cuisiniere: null, frigo: null };
   const moduleCounters = {};
   // REQ-1001 : composition effective de chaque espace libre, exposée à l'éditeur de module.
@@ -1877,8 +1901,9 @@ export function buildKitchen(state) {
   }
   if (cornerOnL) cornerUnit(false);
   if (cornerOnR) cornerUnit(true);
-  // le coin est un module : hitbox de sélection (présent ou retiré)
-  function cornerHitbox(mirror, present) {
+  // le coin présent est un module sélectionnable (le retirer rend sa zone au
+  // ruban ; il se remet depuis l'éditeur de l'espace vide qui touche le coin)
+  function cornerHitbox(mirror) {
     // l'aile principale seulement : une boîte couvrant tout le L déborderait
     // sur le plancher cliquable devant le coin
     const hit = new THREE.Mesh(
@@ -1887,14 +1912,14 @@ export function buildKitchen(state) {
     );
     hit.position.set(mirror ? a - CORNER / 2 : CORNER / 2, (PLINTH + CARCASS_H) / 2, BASE_D / 2);
     hit.userData = {
-      editable: true, corner: mirror ? 'br' : 'bl',
-      current: present ? 'coin' : 'vide', widthIn: Math.round(CORNER / IN),
+      editable: true, corner: mirror ? 'br' : 'bl', current: 'coin',
+      widthIn: Math.round(CORNER / IN),
     };
     inner.add(hit);
     editables.push(hit);
   }
-  if (cornerL) cornerHitbox(false, cornerOnL);
-  if (cornerR) cornerHitbox(true, cornerOnR);
+  if (cornerOnL) cornerHitbox(false);
+  if (cornerOnR) cornerHitbox(true);
 
   // ——— comptoirs (segments, trous d'évier, retrait cuisinière et portes) ———
   function counterSpans(wallKey) {
@@ -2037,8 +2062,9 @@ export function buildKitchen(state) {
   }
   const wbcL = hasCornerL && !(state.cornerOff || {}).ul ? blindCornerUpper(false) : false;
   const wbcR = hasCornerR && !(state.cornerOff || {}).ur ? blindCornerUpper(true) : false;
-  // le coin aveugle mural est un module : hitbox de sélection (présent ou retiré)
-  function upperCornerHitbox(mirror, present) {
+  // le coin aveugle mural présent est un module sélectionnable (retiré, sa
+  // zone est rendue au ruban du mur arrière — voir upLo plus bas)
+  function upperCornerHitbox(mirror) {
     const x0 = mirror ? a - 0.02 - WBC_W : 0.02;
     const hit = new THREE.Mesh(
       new THREE.BoxGeometry(WBC_W, WALL_CAB_H, WALL_CAB_D),
@@ -2046,22 +2072,24 @@ export function buildKitchen(state) {
     );
     hit.position.set(x0 + WBC_W / 2, WALL_BOT + WALL_CAB_H / 2, WALL_CAB_D / 2);
     hit.userData = {
-      editable: true, corner: mirror ? 'ur' : 'ul',
-      current: present ? 'coin' : 'vide', widthIn: Math.round(WBC_W / IN),
+      editable: true, corner: mirror ? 'ur' : 'ul', current: 'coin',
+      widthIn: Math.round(WBC_W / IN),
     };
     inner.add(hit);
     editables.push(hit);
   }
-  if (hasCornerL) upperCornerHitbox(false, wbcL);
-  if (hasCornerR) upperCornerHitbox(true, wbcR);
+  if (wbcL) upperCornerHitbox(false);
+  if (wbcR) upperCornerHitbox(true);
 
   // ——— armoires murales (évite fenêtres, hotte, colonnes, portes) ———
   for (const wk of cabWalls) {
     // les rubans muraux vont jusqu'au coin (après le coin aveugle ou le ruban perpendiculaire)
     let upLo, upHi;
     if (wk === 'back') {
-      upLo = hasCornerL ? (wbcL ? 0.02 + WBC_W + 0.004 : WALL_CAB_D + 0.04) : 0.02;
-      upHi = hasCornerR ? (wbcR ? a - 0.02 - WBC_W - 0.004 : a - WALL_CAB_D - 0.04) : a - 0.02;
+      // sans coin aveugle, le ruban arrière va jusqu'au mur — le ruban
+      // perpendiculaire garde sa réserve (profondeur + jeu), pas de collision
+      upLo = wbcL ? 0.02 + WBC_W + 0.004 : 0.02;
+      upHi = wbcR ? a - 0.02 - WBC_W - 0.004 : a - 0.02;
     } else if (wk === 'front') {
       upLo = 0.02;
       upHi = a - 0.02;
@@ -2382,14 +2410,21 @@ export function buildKitchen(state) {
     manifest.add('chant-bullnose', Math.ceil(edgeLin * 3.2808));
   }
 
-  // déco près de l'évier (mural seulement)
+  // déco près de l'évier (mural seulement) — jamais dans le vide : un accessoire
+  // ne se pose que s'il y a réellement un comptoir sous lui
+  const onCounter = (wk, al) =>
+    (solidSpans[wk] || []).some(([s0, s1]) => al >= s0 + 0.1 && al <= s1 - 0.1);
   if (placed.evier && !placed.evier.isl) {
     const pAl = Math.min(Math.max(placed.evier.along + 0.85, 0.3), wallLen[placed.evier.wall] - 0.3);
-    inner.add(D.plant(...pointFor(placed.evier.wall, pAl, 0.3, COUNTER_TOP).toArray(), 1.05));
+    if (onCounter(placed.evier.wall, pAl)) {
+      inner.add(D.plant(...pointFor(placed.evier.wall, pAl, 0.3, COUNTER_TOP).toArray(), 1.05));
+    }
   }
   if (!wantIsland && placed.evier && !placed.evier.isl) {
     const bAl = Math.min(Math.max(placed.evier.along - 1.0, 0.4), wallLen[placed.evier.wall] - 0.4);
-    inner.add(D.bowl(...pointFor(placed.evier.wall, bAl, 0.33, COUNTER_TOP).toArray()));
+    if (onCounter(placed.evier.wall, bAl)) {
+      inner.add(D.bowl(...pointFor(placed.evier.wall, bAl, 0.33, COUNTER_TOP).toArray()));
+    }
   }
 
   // REQ-913 : staging — tapis devant l'évier
@@ -2412,7 +2447,8 @@ export function buildKitchen(state) {
     t.rotation.y = p.rotY;
     t.translateZ(BASE_D + 0.042);
     inner.add(t);
-  } else if (placed.evier && !placed.evier.isl) {
+  } else if (placed.evier && !placed.evier.isl
+    && onCounter(placed.evier.wall, Math.min(Math.max(placed.evier.along + 0.55, 0.3), wallLen[placed.evier.wall] - 0.3))) {
     const tAl = Math.min(Math.max(placed.evier.along + 0.55, 0.3), wallLen[placed.evier.wall] - 0.3);
     const t = D.towel(false);
     t.position.copy(pointFor(placed.evier.wall, tAl, 0.4, COUNTER_TOP));

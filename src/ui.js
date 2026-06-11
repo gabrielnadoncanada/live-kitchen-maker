@@ -364,9 +364,21 @@ export function buildPanel() {
   s1.append(segmented(
     [['auto', 'Cuisine proposée'], ['libre', 'Page blanche']],
     (s) => (s.autoFill === false ? 'libre' : 'auto'),
-    (k) => setState(k === 'libre'
-      ? { autoFill: false, gapPlans: null, island: false, appliances: { fridge: false, range: false, hood: false, dw: false } }
-      : { autoFill: true, gapPlans: null, appliances: { fridge: true, range: true, hood: true, dw: true } })
+    (k) => {
+      setState(k === 'libre'
+        ? {
+          autoFill: false, gapPlans: null, island: false,
+          appliances: { fridge: false, range: false, hood: false, dw: false, sink: false },
+          cornerOff: { bl: true, br: true, ul: true, ur: true },
+        }
+        : {
+          autoFill: true, gapPlans: null,
+          appliances: { fridge: true, range: true, hood: true, dw: true, sink: true },
+          cornerOff: { bl: false, br: false, ul: false, ur: false },
+        });
+      // la sélection en cours n'a plus de sens après un changement de mode
+      document.dispatchEvent(new Event('atelier:deselect'));
+    }
   ));
   const islRow = switchRow('Îlot central', 'Comptoir cascade + tabourets + suspensions', (s) => s.island, (v) => setState({ island: v }));
   s1.append(islRow);
@@ -821,6 +833,27 @@ export function showModuleEditor(x, y, data, comp) {
       });
       opts.append(b);
     }
+    // un espace vide qui touche un coin retiré peut remettre le caisson de coin
+    const km = /^(back|left|right|front):([gu])(\d+)$/.exec(gapKey);
+    if (km && km[1] === 'back' && ['l', 'u'].includes(state.layout)) {
+      const beforeIn0 = comp.widths.slice(0, gapIndex).reduce((a2, b2) => a2 + b2, 0);
+      const s0In = parseInt(km[3], 10) + beforeIn0;
+      const lenIn = wallLenShared(state, 'back') / IN;
+      const adds = [];
+      const off = state.cornerOff || {};
+      if (km[2] === 'g') {
+        if (s0In < 2 && off.bl) adds.push(['bl', 'Caisson de coin']);
+        if (state.layout === 'u' && s0In + widthIn > lenIn - 2 && off.br) adds.push(['br', 'Caisson de coin (droite)']);
+      } else {
+        if (s0In < 2 && off.ul) adds.push(['ul', 'Coin aveugle mural']);
+        if (state.layout === 'u' && s0In + widthIn > lenIn - 2 && off.ur) adds.push(['ur', 'Coin aveugle mural (droite)']);
+      }
+      for (const [k, label] of adds) {
+        const b = el(`<button><span class="ico">◣</span>${label}</button>`);
+        b.addEventListener('click', () => { setState({ cornerOff: { [k]: false } }); hidePopover(); });
+        opts.append(b);
+      }
+    }
     // électros : seulement dans les espaces du bas, le long d'un mur
     const wallMatch = /^(back|left|right|front):g\d+$/.exec(gapKey);
     if (wallMatch && !data.upper) {
@@ -830,7 +863,7 @@ export function showModuleEditor(x, y, data, comp) {
       const centerM = (startIn + beforeIn + widthIn / 2) * IN;
       const round5 = (v) => Math.round(v * 20) / 20;
       const APPLIANCE_ADDS = [
-        { key: 'water', label: 'Évier', ico: '💧', need: 36 },
+        { key: 'water', label: 'Évier', ico: '💧', need: 36, appl: { sink: true } },
         // la cuisinière arrive toujours avec sa hotte (désactivable ensuite)
         { key: 'stove', label: 'Cuisinière + hotte', ico: '🍳', need: 31, appl: { range: true, hood: true } },
         { key: 'fridge', label: 'Réfrigérateur', ico: '🧊', need: 37, appl: { fridge: true } },
