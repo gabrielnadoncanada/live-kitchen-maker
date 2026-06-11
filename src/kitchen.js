@@ -1190,6 +1190,11 @@ export function buildKitchen(state) {
   };
   const cornerL = hasCornerL && !cornerDoorClash(false);
   const cornerR = hasCornerR && !cornerDoorClash(true);
+  // présence réelle du caisson de coin : l'utilisateur peut le retirer (le coin
+  // devient un espace mort, la réservation reste — les deux rubans ne peuvent
+  // jamais s'y rejoindre en collision)
+  const cornerOnL = cornerL && !(state.cornerOff || {}).bl;
+  const cornerOnR = cornerR && !(state.cornerOff || {}).br;
   // ——— modèle de gap unique : intervalles libres d'un mur pour une bande
   // verticale [y0,y1] donnée. Les ouvertures ne bloquent que si elles
   // chevauchent réellement la bande (un caisson bas passe sous une fenêtre,
@@ -1695,11 +1700,11 @@ export function buildKitchen(state) {
       });
       // REQ-711 : un bout de segment qui ne bute pas sur un caisson de coin
       // est un flanc visible → fausse porte de finition
-      const cornerHere = wallKey === 'left' ? cornerL : wallKey === 'right' ? cornerR : false;
+      const cornerHere = wallKey === 'left' ? cornerOnL : wallKey === 'right' ? cornerOnR : false;
       const startExposed = wallKey === 'back'
-        ? !(cornerL && Math.abs(s0 - CORNER) < 0.03)
+        ? !(cornerOnL && Math.abs(s0 - CORNER) < 0.03)
         : !(cornerHere && Math.abs(s0 - CORNER) < 0.03);
-      const endExposed = !(wallKey === 'back' && cornerR && Math.abs(s1 - (a - CORNER)) < 0.03);
+      const endExposed = !(wallKey === 'back' && cornerOnR && Math.abs(s1 - (a - CORNER)) < 0.03);
       if (slots.length) {
         if (startExposed) slots[0].panelStart = true;
         if (endExposed) slots[slots.length - 1].panelEnd = true;
@@ -1870,8 +1875,26 @@ export function buildKitchen(state) {
     plinthLin += CORNER;
     return x0;
   }
-  if (cornerL) cornerUnit(false);
-  if (cornerR) cornerUnit(true);
+  if (cornerOnL) cornerUnit(false);
+  if (cornerOnR) cornerUnit(true);
+  // le coin est un module : hitbox de sélection (présent ou retiré)
+  function cornerHitbox(mirror, present) {
+    // l'aile principale seulement : une boîte couvrant tout le L déborderait
+    // sur le plancher cliquable devant le coin
+    const hit = new THREE.Mesh(
+      new THREE.BoxGeometry(CORNER, PLINTH + CARCASS_H, BASE_D),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hit.position.set(mirror ? a - CORNER / 2 : CORNER / 2, (PLINTH + CARCASS_H) / 2, BASE_D / 2);
+    hit.userData = {
+      editable: true, corner: mirror ? 'br' : 'bl',
+      current: present ? 'coin' : 'vide', widthIn: Math.round(CORNER / IN),
+    };
+    inner.add(hit);
+    editables.push(hit);
+  }
+  if (cornerL) cornerHitbox(false, cornerOnL);
+  if (cornerR) cornerHitbox(true, cornerOnR);
 
   // ——— comptoirs (segments, trous d'évier, retrait cuisinière et portes) ———
   function counterSpans(wallKey) {
@@ -2012,8 +2035,25 @@ export function buildKitchen(state) {
     addSolid('back', x0, x0 + WBC_W, 0, WALL_CAB_D, WALL_BOT, WALL_BOT + WALL_CAB_H, 'caisson', 'coin-aveugle-mural');
     return true;
   }
-  const wbcL = hasCornerL ? blindCornerUpper(false) : false;
-  const wbcR = hasCornerR ? blindCornerUpper(true) : false;
+  const wbcL = hasCornerL && !(state.cornerOff || {}).ul ? blindCornerUpper(false) : false;
+  const wbcR = hasCornerR && !(state.cornerOff || {}).ur ? blindCornerUpper(true) : false;
+  // le coin aveugle mural est un module : hitbox de sélection (présent ou retiré)
+  function upperCornerHitbox(mirror, present) {
+    const x0 = mirror ? a - 0.02 - WBC_W : 0.02;
+    const hit = new THREE.Mesh(
+      new THREE.BoxGeometry(WBC_W, WALL_CAB_H, WALL_CAB_D),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hit.position.set(x0 + WBC_W / 2, WALL_BOT + WALL_CAB_H / 2, WALL_CAB_D / 2);
+    hit.userData = {
+      editable: true, corner: mirror ? 'ur' : 'ul',
+      current: present ? 'coin' : 'vide', widthIn: Math.round(WBC_W / IN),
+    };
+    inner.add(hit);
+    editables.push(hit);
+  }
+  if (hasCornerL) upperCornerHitbox(false, wbcL);
+  if (hasCornerR) upperCornerHitbox(true, wbcR);
 
   // ——— armoires murales (évite fenêtres, hotte, colonnes, portes) ———
   for (const wk of cabWalls) {

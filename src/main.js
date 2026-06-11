@@ -46,11 +46,13 @@ function rebuild() {
   renderQuote(lastQuote);
   renderNkba(computeNkbaWarnings(current.nkba));
 
-  // la sélection (module ou électro) survit aux reconstructions
+  // la sélection (module, électro ou coin) survit aux reconstructions
   if (selection) {
     const m = selection.ud.fixture
       ? current.editables.find((e2) => e2.userData.fixture === selection.ud.fixture)
-      : findEditable(selection.key, selection.idx);
+      : selection.ud.corner
+        ? current.editables.find((e2) => e2.userData.corner === selection.ud.corner)
+        : findEditable(selection.key, selection.idx);
     if (m) attachSelection(m);
     else deselectModule();
   }
@@ -215,6 +217,14 @@ function pickModule(x, y) {
   // flotte jusqu'à ~4 cm devant la hitbox du module.
   if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.05)) {
     const ud = modHit.object.userData;
+    // coin : sélection simple (retirer / remettre via la barre)
+    if (ud.corner) {
+      if (!selection || selection.mesh !== modHit.object) {
+        hidePopover();
+        selectModule(modHit.object);
+      }
+      return;
+    }
     // électro : 1er clic = sélection, 2e clic = ses réglages (fini / style)
     if (ud.fixture) {
       if (selection && selection.mesh === modHit.object) {
@@ -263,6 +273,7 @@ function findEditable(key, idx) {
 }
 
 const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur' };
+const CORNER_TITLES = { bl: 'Caisson de coin', br: 'Caisson de coin', ul: 'Coin mural', ur: 'Coin mural' };
 
 function attachSelection(mesh) {
   clearOutline();
@@ -270,14 +281,22 @@ function attachSelection(mesh) {
   const ud = mesh.userData;
   selection = ud.fixture
     ? { fixture: ud.fixture, ud, mesh }
-    : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
+    : ud.corner
+      ? { corner: ud.corner, ud, mesh }
+      : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
   modbar.querySelector('.mb-title').textContent = ud.fixture
     ? `${FIXTURE_TITLES[ud.fixture]} · ${Math.round(ud.widthIn)} po`
-    : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+    : ud.corner
+      ? `${CORNER_TITLES[ud.corner]}${ud.current === 'vide' ? ' · vide' : ` · ${Math.round(ud.widthIn)} po`}`
+      : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
   // un espace vide se « remplit » plutôt qu'il ne se paramètre ; l'évier
-  // (plomberie) ne se retire pas
+  // (plomberie) ne se retire pas ; les coins ne se déplacent pas
   modbar.querySelector('.mb-edit').textContent = ud.current === 'vide' ? '➕ Ajouter' : '✏️ Paramètres';
+  modbar.querySelector('.mb-edit').style.display = (ud.corner && ud.current !== 'vide') ? 'none' : '';
   modbar.querySelector('.mb-del').style.display = (ud.current === 'vide' || ud.fixture === 'water') ? 'none' : '';
+  const noMove = !!ud.corner;
+  modbar.querySelector('.mb-left').style.display = noMove ? 'none' : '';
+  modbar.querySelector('.mb-right').style.display = noMove ? 'none' : '';
   modbar.hidden = false;
   positionModbar();
 }
@@ -395,6 +414,11 @@ modbar.querySelector('.mb-right').addEventListener('click', (e) => {
 });
 modbar.querySelector('.mb-edit').addEventListener('click', () => {
   if (!selection) return;
+  // coin retiré : ➕ le remet en place
+  if (selection.ud.corner) {
+    if (selection.ud.current === 'vide') setState({ cornerOff: { [selection.ud.corner]: false } });
+    return;
+  }
   const r = modbar.getBoundingClientRect();
   if (selection.ud.fixture) {
     showSurfaceEditor(r.left, r.bottom + 8, selection.ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
@@ -405,6 +429,11 @@ modbar.querySelector('.mb-edit').addEventListener('click', () => {
 });
 modbar.querySelector('.mb-del').addEventListener('click', (e) => {
   if (!selection) return;
+  // coin : retirer → espace mort (réservation conservée, ré-ajout au clic)
+  if (selection.ud.corner) {
+    setState({ cornerOff: { [selection.ud.corner]: true } });
+    return;
+  }
   // électro : retirer = désactiver l'appareil (la hotte part avec la cuisinière)
   if (selection.ud.fixture) {
     const off = { stove: { range: false, hood: false }, fridge: { fridge: false }, dw: { dw: false } }[selection.ud.fixture];
@@ -477,6 +506,11 @@ canvas.addEventListener('pointerdown', (e) => {
   const surfHit = findSurfaceHit();
   if (surfHit && modHit.distance > surfHit.distance + 0.05) return;
   const fresh = !selection || selection.mesh !== modHit.object;
+  // un coin se sélectionne mais ne se glisse pas (la caméra garde le geste)
+  if (modHit.object.userData.corner) {
+    if (fresh) { hidePopover(); selectModule(modHit.object); }
+    return;
+  }
   if (fresh) {
     hidePopover();
     selectModule(modHit.object);
