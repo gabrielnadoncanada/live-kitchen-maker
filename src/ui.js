@@ -7,6 +7,7 @@ import {
 import { fmt } from './pricing.js';
 import { getBusiness } from './tenant.js';
 import { resolveOpeningPos, wallLenOf as wallLenShared } from './openings.js';
+import { IN } from './skuCatalog.js';
 
 const updaters = [];
 function refresh() { for (const u of updaters) u(state); }
@@ -357,6 +358,16 @@ export function buildPanel() {
   }
   updaters.push((s) => shapes.querySelectorAll('.shape-card').forEach((b) => b.classList.toggle('active', b.dataset.k === s.layout)));
   s1.append(shapes);
+  // mode de remplissage : cuisine proposée (le solveur peuple tout) ou page
+  // blanche (espaces vides à peupler caisson par caisson, sans collision)
+  s1.append(el('<div class="swatch-label" style="margin-top:10px"><span>Remplissage</span></div>'));
+  s1.append(segmented(
+    [['auto', 'Cuisine proposée'], ['libre', 'Page blanche']],
+    (s) => (s.autoFill === false ? 'libre' : 'auto'),
+    (k) => setState(k === 'libre'
+      ? { autoFill: false, gapPlans: null, island: false, appliances: { fridge: false, range: false, hood: false, dw: false } }
+      : { autoFill: true, gapPlans: null, appliances: { fridge: true, range: true, hood: true, dw: true } })
+  ));
   const islRow = switchRow('Îlot central', 'Comptoir cascade + tabourets + suspensions', (s) => s.island, (v) => setState({ island: v }));
   s1.append(islRow);
   // REQ-1005/1006 : type d'îlot (libre / péninsule) et fonction (rangement / évier / cuisson)
@@ -613,9 +624,12 @@ function writePlan(gapKey, widths, types, hinges = null) {
   setState({ gapPlans: { [gapKey]: widths ? { widths, types, hinges } : null } });
 }
 
-// Change la largeur du caisson idx à newW (po) ; les voisins absorbent la différence
-// par pas de 3 po (min 9, max 36). exact = la somme doit remplir l'espace (îlot).
-// Retourne { widths, types } ou null si impossible.
+// Change la largeur du caisson idx à newW (po) ; les voisins absorbent la
+// différence par pas de 3 po (min 9, max 36) — un espace vide est élastique :
+// il fond jusqu'à disparaître ou grandit sans limite, en priorité sur les
+// caissons. exact = la somme doit remplir l'espace (îlot).
+// Retourne { widths, types, idx } (idx suit le caisson édité après purge des
+// vides fondus à zéro) ou null si impossible.
 function recomposeWidth(comp, idx, newW, exact) {
   const widths = [...comp.widths];
   const types = [...comp.types];
@@ -626,24 +640,42 @@ function recomposeWidth(comp, idx, newW, exact) {
     if (idx + d < widths.length) order.push(idx + d);
     if (idx - d >= 0) order.push(idx - d);
   }
-  // trop large : rétrécir les voisins
-  for (const j of order) {
-    while (rest < -0.01 && widths[j] >= 12) { widths[j] -= 3; rest += 3; }
+  // trop large : rétrécir les voisins — les vides d'abord, puis les caissons
+  for (const videsOnly of [true, false]) {
+    for (const j of order) {
+      if ((types[j] === 'vide') !== videsOnly) continue;
+      const min = types[j] === 'vide' ? 0 : 9;
+      while (rest < -0.01 && widths[j] - 3 >= min) { widths[j] -= 3; rest += 3; }
+    }
   }
   if (rest < -0.01) return null;
-  // espace libéré : le redonner aux voisins pour garder un filler < 3 po
-  for (const j of order) {
-    while (rest >= 3 && widths[j] <= 33) { widths[j] += 3; rest -= 3; }
+  // espace libéré : le redonner aux voisins — les vides d'abord (sans limite)
+  for (const videsOnly of [true, false]) {
+    for (const j of order) {
+      if ((types[j] === 'vide') !== videsOnly) continue;
+      while (rest >= 3 && (types[j] === 'vide' || widths[j] <= 33)) { widths[j] += 3; rest -= 3; }
+    }
   }
-  // personne ne peut absorber et il reste ≥ 9 po : nouveau caisson en bout
+  // personne ne peut absorber et il reste ≥ 9 po : espace vide en page
+  // blanche, sinon nouveau caisson en bout
   while (rest >= 9) {
     const w2 = Math.min(36, Math.floor(rest / 3) * 3);
+    if (state.autoFill === false) { widths.push(rest); types.push('vide'); rest = 0; break; }
     widths.push(w2);
     types.push(comp.upper ? 'portes' : w2 >= 12 ? 'tiroirs' : 'portes');
     rest -= w2;
   }
   if (exact && rest > 0.01) return null;
-  return { widths, types };
+  // purger les vides fondus à zéro (l'index du caisson édité suit)
+  let outIdx = idx;
+  for (let j = widths.length - 1; j >= 0; j--) {
+    if (widths[j] <= 0 && types[j] === 'vide') {
+      widths.splice(j, 1);
+      types.splice(j, 1);
+      if (j < outIdx) outIdx--;
+    }
+  }
+  return { widths, types, idx: outIdx };
 }
 
 // libellé court d'un type de module (mini-barre de sélection)
@@ -691,18 +723,24 @@ export function reorderModule(comps, srcKey, srcIdx, dstKey, dstIdx) {
     rest -= w2;
   }
   const dw = [...dst.widths], dt = [...dst.types], dh = aligned(dst);
-  const di = Math.max(0, Math.min(dstIdx, dw.length));
-  // destination pleine (les gaps le sont toujours par construction) : les
-  // voisins du point d'insertion rétrécissent par pas de 3 po pour faire de
-  // la place, dans les limites de leur type
+  let di = Math.max(0, Math.min(dstIdx, dw.length));
+  // destination pleine : les voisins du point d'insertion rétrécissent par
+  // pas de 3 po pour faire de la place, dans les limites de leur type — un
+  // espace vide fond jusqu'à disparaître
   let need = dw.reduce((a, b) => a + b, 0) + w - dst.totalIn;
   if (need > 0.05) {
-    const minOf = (ty) => (ty === 'tiroirs' ? 12 : ty === 'poubelle' ? 18 : ty === 'micro-ondes' ? 27 : ty === 'range-epices' ? 6 : 9);
+    const minOf = (ty) => (ty === 'vide' ? 0 : ty === 'tiroirs' ? 12 : ty === 'poubelle' ? 18 : ty === 'micro-ondes' ? 27 : ty === 'range-epices' ? 6 : 9);
     const order2 = dw.map((_, j) => j).sort((p, q) => Math.abs(p + 0.5 - di) - Math.abs(q + 0.5 - di));
     for (const j of order2) {
       while (need > 0.05 && dw[j] - 3 >= minOf(dt[j])) { dw[j] -= 3; need -= 3; }
     }
     if (need > 0.05) return null;
+    for (let j = dw.length - 1; j >= 0; j--) {
+      if (dw[j] <= 0 && dt[j] === 'vide') {
+        dw.splice(j, 1); dt.splice(j, 1); dh.splice(j, 1);
+        if (j < di) di--;
+      }
+    }
   }
   dw.splice(di, 0, w); dt.splice(di, 0, t); dh.splice(di, 0, h);
   return {
@@ -725,18 +763,82 @@ export function showModuleEditor(x, y, data, comp) {
 
   const flash = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
   const apply = (widths, types, hinges = null) => { writePlan(gapKey, widths, types, hinges); hidePopover(); };
-
   const typeList = data.upper ? MODULE_TYPES.filter((t) => UPPER_KEYS.includes(t.key)) : MODULE_TYPES;
+
+  // ——— espace vide : on y AJOUTE (caisson ou électroménager) plutôt qu'on le paramètre.
+  // Le caisson choisi prend place à gauche de l'espace, le reste demeure vide ;
+  // un électro s'épingle à cet endroit (position manuelle) et passe par le
+  // solveur — il se snape au besoin (fenêtres, dégagements), jamais de collision.
+  if (current === 'vide') {
+    document.getElementById('popoverTitle').textContent =
+      `Espace vide · ${Math.round(widthIn * 10) / 10} po (${Math.round(widthIn * 2.54)} cm)`;
+    opts.append(el('<div class="pop-label">Ajouter un caisson</div>'));
+    for (const t of typeList) {
+      if (t.key === 'vide') continue;
+      const wDef = t.key === 'poubelle' ? 18 : t.key === 'micro-ondes' ? 27 : t.key === 'range-epices' ? 9
+        : Math.min(24, Math.max(9, Math.floor(widthIn / 3) * 3));
+      const b = el(`<button><span class="ico">${t.ico}</span>${t.label}<small>${wDef} po</small></button>`);
+      b.addEventListener('click', () => {
+        if (!t.ok(wDef) || wDef > widthIn + 0.01) return flash(b);
+        const widths = [...comp.widths], types = [...comp.types];
+        const hinges = comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null);
+        const rest = widthIn - wDef;
+        if (rest >= 3) {
+          widths.splice(gapIndex, 1, wDef, rest);
+          types.splice(gapIndex, 1, t.key, 'vide');
+          hinges.splice(gapIndex, 1, null, null);
+        } else {
+          // le reste serait une lamelle : le caisson prend tout l'espace
+          if (!t.ok(widthIn) || widthIn > 36) return flash(b);
+          types.splice(gapIndex, 1, t.key);
+          hinges.splice(gapIndex, 1, null);
+        }
+        apply(widths, types, hinges);
+      });
+      opts.append(b);
+    }
+    // électros : seulement dans les espaces du bas, le long d'un mur
+    const wallMatch = /^(back|left|right|front):g\d+$/.exec(gapKey);
+    if (wallMatch && !data.upper) {
+      const wall = wallMatch[1];
+      const startIn = parseInt(gapKey.split(':g')[1], 10);
+      const beforeIn = comp.widths.slice(0, gapIndex).reduce((a2, b2) => a2 + b2, 0);
+      const centerM = (startIn + beforeIn + widthIn / 2) * IN;
+      const round5 = (v) => Math.round(v * 20) / 20;
+      const APPLIANCE_ADDS = [
+        { key: 'water', label: 'Évier', ico: '💧', need: 36 },
+        { key: 'stove', label: 'Cuisinière', ico: '🍳', need: 31, appl: 'range' },
+        { key: 'fridge', label: 'Réfrigérateur', ico: '🧊', need: 37, appl: 'fridge' },
+        { key: 'dw', label: 'Lave-vaisselle', ico: '🍽', need: 24, appl: 'dw' },
+      ];
+      opts.append(el('<div class="pop-label">Ajouter un électroménager</div>'));
+      for (const a of APPLIANCE_ADDS) {
+        const fits = widthIn + 0.01 >= a.need;
+        const b = el(`<button><span class="ico">${a.ico}</span>${a.label}${fits ? '' : `<small>→ ${a.need} po requis</small>`}</button>`);
+        b.addEventListener('click', () => {
+          if (!fits) return flash(b);
+          const patch = { constraints: { [a.key]: { auto: false, wall, pos: round5(centerM) } } };
+          if (a.appl) patch.appliances = { [a.appl]: true };
+          setState(patch);
+          hidePopover();
+        });
+        opts.append(b);
+      }
+    }
+    placePopover(pop, x, y);
+    return;
+  }
+
   for (const t of typeList) {
     const b = el(`<button class="${t.key === current ? 'active' : ''}">
       <span class="ico">${t.ico}</span>${t.label}${t.ok(widthIn) ? '' : `<small>→ ${t.snap(widthIn)} po</small>`}
     </button>`);
     b.addEventListener('click', () => {
       const r = t.ok(widthIn)
-        ? { widths: [...comp.widths], types: [...comp.types] }
+        ? { widths: [...comp.widths], types: [...comp.types], idx: gapIndex }
         : recomposeWidth(comp, gapIndex, t.snap(widthIn), exact);
       if (!r) return flash(b);
-      r.types[gapIndex] = t.key;
+      r.types[r.idx] = t.key;
       apply(r.widths, r.types);
     });
     opts.append(b);
@@ -753,7 +855,7 @@ export function showModuleEditor(x, y, data, comp) {
         if (w === widthIn) return;
         const r = recomposeWidth(comp, gapIndex, w, exact);
         if (!r) return flash(c);
-        if (!typeDef(current).ok(w)) r.types[gapIndex] = w >= 12 ? 'tiroirs' : 'portes';
+        if (!typeDef(current).ok(w)) r.types[r.idx] = w >= 12 ? 'tiroirs' : 'portes';
         apply(r.widths, r.types);
       });
       chips.append(c);

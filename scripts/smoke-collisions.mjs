@@ -82,6 +82,19 @@ const scenarios = [
     layout: 'l', island: true, islandMode: 'peninsule', islandFeature: 'evier',
     cooking: 'mural', sinkStyle: 'farmhouse',
   }],
+  ['page blanche (autoFill off, sans électros)', {
+    autoFill: false, island: false,
+    appliances: { fridge: false, range: false, hood: false, dw: false },
+  }],
+  ['page blanche peuplée (caissons + frigo épinglé)', {
+    autoFill: false, island: false,
+    appliances: { fridge: true, range: false, hood: false, dw: false },
+    constraints: {
+      fridge: { auto: false, wall: 'back', pos: 3.8 },
+      openings: [{ id: 1, type: 'fenetre', wall: 'back', pos: 2.2, width: 1.25 }],
+    },
+    gapPlans: { 'back:g36': { widths: [24, 30], types: ['tiroirs', 'vide'], hinges: [null, null] } },
+  }],
   ['U serré, frigo manuel près du coin', {
     layout: 'u',
     dims: { a: 4.3, b: 3.0, c: 2.8 },
@@ -98,7 +111,7 @@ let failures = 0;
 for (const [name, patch] of scenarios) {
   // repartir d'un état neuf pour les clés non patchées sensibles
   setState({
-    layout: 'l', island: true, islandMode: 'libre', islandFeature: 'aucun',
+    layout: 'l', island: true, islandMode: 'libre', islandFeature: 'aucun', autoFill: true,
     dims: { a: 4.4, b: 3.2, c: 3.0 }, ceiling: 9, wallCabHeight: 30,
     cooking: 'cuisiniere', hoodType: 'cheminee', sinkStyle: 'encastre',
     appliances: { fridge: true, range: true, hood: true, dw: true },
@@ -109,7 +122,7 @@ for (const [name, patch] of scenarios) {
       dw: { auto: true, wall: 'back', pos: 2.9 },
       openings: [{ id: 1, type: 'fenetre', wall: 'back', pos: 2.2, width: 1.25 }],
     },
-    gapPlans: {},
+    gapPlans: null, // remplacement entier (deepMerge ne vide pas un objet avec {})
   });
   setState(patch);
   let res;

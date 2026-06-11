@@ -1424,6 +1424,30 @@ export function buildKitchen(state) {
         if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
         return out;
       }
+      // plan périmé (le gap a changé : appareil inséré, mur redimensionné…) —
+      // en page blanche on TRONQUE au lieu de tout perdre : les caissons qui
+      // tiennent encore restent (tassés à gauche), le surplus redevient vide
+      if (state.autoFill === false) {
+        const out = [];
+        let acc = 0;
+        for (let i = 0; i < plan.widths.length; i++) {
+          if (plan.types?.[i] === 'vide') continue;
+          if (acc + plan.widths[i] > totalIn + 0.05) break;
+          out.push({
+            w: plan.widths[i] * IN, widthIn: plan.widths[i], filler: false,
+            planType: plan.types?.[i] || null, planHinge: plan.hinges?.[i] || null,
+          });
+          acc += plan.widths[i];
+        }
+        const restV = totalIn - acc;
+        if (restV * IN >= 0.012) out.push({ w: restV * IN, widthIn: restV, filler: false, planType: 'vide', planHinge: null });
+        return out;
+      }
+    }
+    // page blanche (autoFill désactivé) : aucun remplissage automatique — tout
+    // l'espace libre devient un grand « espace vide » à peupler au clic
+    if (state.autoFill === false) {
+      return [{ w: len, widthIn: len / IN, filler: false, planType: 'vide', planHinge: null }];
     }
     return catalogWidths(len);
   }
@@ -1435,6 +1459,17 @@ export function buildKitchen(state) {
   const pushSolid = (x0, x1, z0, z1, y0, y1, kind, label) => {
     solidBoxes.push({ x0, x1, z0, z1, y0, y1, kind, label });
   };
+  // étendue des bases réellement posées par mur : le comptoir et le dosseret
+  // s'étendent de la première à la dernière base (les vides intérieurs sont
+  // pontés) et disparaissent d'un mur sans caisson (page blanche)
+  const solidSpans = { back: [], left: [], right: [], front: [] };
+  function clipToSolids(spans, wallKey) {
+    const solids = solidSpans[wallKey] || [];
+    if (!solids.length) return [];
+    const b0 = Math.min(...solids.map((s2) => s2[0])) - 0.02;
+    const b1 = Math.max(...solids.map((s2) => s2[1])) + 0.02;
+    return cut(cut(spans, -10, b0), b1, wallLen[wallKey] + 10);
+  }
   const addSolid = (wallKey, al0, al1, d0, d1, y0, y1, kind, label) => {
     if (al1 - al0 < 0.012) return;
     const r = rectFor(wallKey, al0, al1, d0, d1);
@@ -1744,6 +1779,7 @@ export function buildKitchen(state) {
         } else if (type !== 'vide') {
           addSolid(wallKey, along, along + slot.w, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', type);
         }
+        if (type !== 'vide') solidSpans[wallKey].push([along, along + slot.w]);
         if (type !== 'cuisiniere' && type !== 'vide') plinthLin += slot.w;
         g.position.copy(pl.pos);
         g.rotation.y = pl.rotY;
@@ -1790,9 +1826,13 @@ export function buildKitchen(state) {
     if (mirror) {
       pushSolid(a - CORNER, a, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', 'back:coin');
       pushSolid(a - BASE_D, a, BASE_D, CORNER, 0, PLINTH + CARCASS_H, 'caisson', 'right:coin (retour)');
+      solidSpans.back.push([a - CORNER, a]);
+      solidSpans.right.push([0, CORNER]);
     } else {
       pushSolid(0, CORNER, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', 'back:coin');
       pushSolid(0, BASE_D, BASE_D, CORNER, 0, PLINTH + CARCASS_H, 'caisson', 'left:coin (retour)');
+      solidSpans.back.push([0, CORNER]);
+      solidSpans.left.push([0, CORNER]);
     }
     plinthLin += CORNER;
     return x0;
@@ -1818,7 +1858,7 @@ export function buildKitchen(state) {
         spans = cut(spans, tall.along - tall.w / 2, tall.along + tall.w / 2);
       }
     }
-    return spans;
+    return clipToSolids(spans, wallKey);
   }
   // REQ-908 : la cuve farmhouse est plus large et file jusqu'au bord avant du
   // comptoir (le tablier remplace la bande de chant devant la cuve)
@@ -1880,6 +1920,7 @@ export function buildKitchen(state) {
     for (const tall of [placed.frigo, placed.pantry, placed.four]) {
       if (tall && tall.wall === wk) spans = cut(spans, tall.along - tall.w / 2, tall.along + tall.w / 2);
     }
+    spans = clipToSolids(spans, wk); // pas de dosseret au-dessus de rien (page blanche)
     for (const [s0, s1] of spans) {
       addBoxRect(wk, s0, s1, 0.004, 0.018, COUNTER_TOP, WALL_BOT, backsplashMat);
       manifest.backsplashArea += (s1 - s0) * bsH;

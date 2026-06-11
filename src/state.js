@@ -3,6 +3,7 @@ const listeners = new Set();
 
 export const state = {
   layout: 'l',            // 'lineaire' | 'l' | 'u' | 'galley' (REQ-1005)
+  autoFill: true,         // false = page blanche : les espaces libres ne s'auto-peuplent pas
   island: true,
   islandMode: 'libre',    // 'libre' | 'peninsule' — rattachée au mur droit (REQ-1005)
   islandFeature: 'aucun', // 'aucun' | 'evier' | 'plaque' — fonction de l'îlot (REQ-1006)
