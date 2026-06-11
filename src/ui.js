@@ -619,9 +619,23 @@ const widthsFor = (t) =>
   : [9, 12, 15, 18, 21, 24, 27, 30, 33, 36];
 
 // hinges (REQ-910) : tableau aligné sur widths ('gauche' | 'droite' | null) —
-// toujours écrit explicitement pour ne jamais garder un tableau périmé après recomposition
+// toujours écrit explicitement pour ne jamais garder un tableau périmé après recomposition.
+// Normalisation systématique : les espaces vides adjacents fusionnent en un seul
+// (jamais deux zones vides côte à côte), les entrées à zéro disparaissent.
+function normalizePlan(widths, types, hinges) {
+  const W = [], T = [], H = [];
+  for (let i = 0; i < widths.length; i++) {
+    if (widths[i] <= 0.05) continue;
+    if (types[i] === 'vide' && T[T.length - 1] === 'vide') { W[W.length - 1] += widths[i]; continue; }
+    W.push(widths[i]);
+    T.push(types[i]);
+    H.push((hinges || [])[i] ?? null);
+  }
+  return { widths: W, types: T, hinges: H };
+}
 function writePlan(gapKey, widths, types, hinges = null) {
-  setState({ gapPlans: { [gapKey]: widths ? { widths, types, hinges } : null } });
+  if (widths) ({ widths, types, hinges } = normalizePlan(widths, types, hinges));
+  setState({ gapPlans: { [gapKey]: widths && widths.length ? { widths, types, hinges } : null } });
 }
 
 // Change la largeur du caisson idx à newW (po) ; les voisins absorbent la
@@ -780,16 +794,26 @@ export function showModuleEditor(x, y, data, comp) {
       const b = el(`<button><span class="ico">${t.ico}</span>${t.label}<small>${wDef} po</small></button>`);
       b.addEventListener('click', () => {
         if (!t.ok(wDef) || wDef > widthIn + 0.01) return flash(b);
+        // jamais de lamelle : si le reste serait < 9 po (inutilisable), le
+        // caisson prend tout l'espace quand son type le permet, sinon il se
+        // réduit pour laisser un vide exploitable
+        let wPick = wDef;
+        let rest = widthIn - wPick;
+        if (rest > 0.05 && rest < 9) {
+          if (widthIn <= 36.05 && t.ok(widthIn)) { wPick = widthIn; rest = 0; }
+          else {
+            const reduced = Math.floor((widthIn - 9) / 3) * 3;
+            if (t.ok(reduced)) { wPick = reduced; rest = widthIn - wPick; }
+          }
+        }
         const widths = [...comp.widths], types = [...comp.types];
         const hinges = comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null);
-        const rest = widthIn - wDef;
-        if (rest >= 3) {
-          widths.splice(gapIndex, 1, wDef, rest);
+        if (rest > 0.05) {
+          widths.splice(gapIndex, 1, wPick, rest);
           types.splice(gapIndex, 1, t.key, 'vide');
           hinges.splice(gapIndex, 1, null, null);
         } else {
-          // le reste serait une lamelle : le caisson prend tout l'espace
-          if (!t.ok(widthIn) || widthIn > 36) return flash(b);
+          widths.splice(gapIndex, 1, widthIn);
           types.splice(gapIndex, 1, t.key);
           hinges.splice(gapIndex, 1, null);
         }
@@ -807,9 +831,10 @@ export function showModuleEditor(x, y, data, comp) {
       const round5 = (v) => Math.round(v * 20) / 20;
       const APPLIANCE_ADDS = [
         { key: 'water', label: 'Évier', ico: '💧', need: 36 },
-        { key: 'stove', label: 'Cuisinière', ico: '🍳', need: 31, appl: 'range' },
-        { key: 'fridge', label: 'Réfrigérateur', ico: '🧊', need: 37, appl: 'fridge' },
-        { key: 'dw', label: 'Lave-vaisselle', ico: '🍽', need: 24, appl: 'dw' },
+        // la cuisinière arrive toujours avec sa hotte (désactivable ensuite)
+        { key: 'stove', label: 'Cuisinière + hotte', ico: '🍳', need: 31, appl: { range: true, hood: true } },
+        { key: 'fridge', label: 'Réfrigérateur', ico: '🧊', need: 37, appl: { fridge: true } },
+        { key: 'dw', label: 'Lave-vaisselle', ico: '🍽', need: 24, appl: { dw: true } },
       ];
       opts.append(el('<div class="pop-label">Ajouter un électroménager</div>'));
       for (const a of APPLIANCE_ADDS) {
@@ -818,7 +843,7 @@ export function showModuleEditor(x, y, data, comp) {
         b.addEventListener('click', () => {
           if (!fits) return flash(b);
           const patch = { constraints: { [a.key]: { auto: false, wall, pos: round5(centerM) } } };
-          if (a.appl) patch.appliances = { [a.appl]: true };
+          if (a.appl) patch.appliances = a.appl;
           setState(patch);
           hidePopover();
         });

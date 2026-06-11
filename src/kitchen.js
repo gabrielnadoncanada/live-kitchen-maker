@@ -1411,6 +1411,15 @@ export function buildKitchen(state) {
   // couvre encore l'espace (reste < 9 po), sinon automatiquement aux largeurs catalogue.
   function composeGap(gapKey, len) {
     const totalIn = len / IN;
+    // deux vides adjacents fusionnent toujours (jamais deux zones distinctes côte à côte)
+    const mergeVides = (pieces) => pieces.reduce((acc, p) => {
+      const last = acc[acc.length - 1];
+      if (p.planType === 'vide' && last && last.planType === 'vide') {
+        last.w += p.w;
+        last.widthIn += p.widthIn;
+      } else acc.push(p);
+      return acc;
+    }, []);
     const plan = (state.gapPlans || {})[gapKey];
     if (plan && Array.isArray(plan.widths) && plan.widths.length) {
       const sum = plan.widths.reduce((s, w) => s + w, 0);
@@ -1421,8 +1430,13 @@ export function buildKitchen(state) {
           planType: plan.types?.[i] || null,
           planHinge: plan.hinges?.[i] || null, // REQ-910
         }));
-        if (rest * IN >= 0.012) out.push({ w: rest * IN, widthIn: rest, filler: true });
-        return out;
+        if (rest * IN >= 0.012) {
+          // en page blanche le reste est un vide sélectionnable, pas un filler
+          out.push(state.autoFill === false
+            ? { w: rest * IN, widthIn: rest, filler: false, planType: 'vide', planHinge: null }
+            : { w: rest * IN, widthIn: rest, filler: true });
+        }
+        return mergeVides(out);
       }
       // plan périmé (le gap a changé : appareil inséré, mur redimensionné…) —
       // en page blanche on TRONQUE au lieu de tout perdre : les caissons qui
@@ -1441,7 +1455,7 @@ export function buildKitchen(state) {
         }
         const restV = totalIn - acc;
         if (restV * IN >= 0.012) out.push({ w: restV * IN, widthIn: restV, filler: false, planType: 'vide', planHinge: null });
-        return out;
+        return mergeVides(out);
       }
     }
     // page blanche (autoFill désactivé) : aucun remplissage automatique — tout
@@ -1794,6 +1808,25 @@ export function buildKitchen(state) {
             editable: true, moduleId: id, current: type, width: slot.w,
             widthIn: slot.widthIn, gapKey: slot.gapKey, gapIndex: slot.gapIndex,
             hinge: slot.hinge ?? null,
+          };
+          g.add(hit);
+          editables.push(hit);
+        }
+        // les électros aussi sont saisissables : glisser = déplacer (position
+        // manuelle re-résolue par le solveur), corbeille = retirer
+        const FIXTURE_KEYS = { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' };
+        if (FIXTURE_KEYS[type]) {
+          const fh = type === 'frigo' ? TALL_H : CARCASS_H + PLINTH;
+          const fd = type === 'frigo' ? 0.7 : BASE_D;
+          const hit = new THREE.Mesh(
+            new THREE.BoxGeometry(slot.w, fh, fd),
+            new THREE.MeshBasicMaterial({ visible: false })
+          );
+          hit.position.set(slot.w / 2, fh / 2, fd / 2);
+          hit.userData = {
+            editable: true, fixture: FIXTURE_KEYS[type], current: type,
+            wall: wallKey, along: along + slot.w / 2, width: slot.w,
+            widthIn: Math.round(slot.w / IN),
           };
           g.add(hit);
           editables.push(hit);

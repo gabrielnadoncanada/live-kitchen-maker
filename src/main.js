@@ -46,9 +46,11 @@ function rebuild() {
   renderQuote(lastQuote);
   renderNkba(computeNkbaWarnings(current.nkba));
 
-  // la sélection de module survit aux reconstructions (drag, changement de réglage)
+  // la sélection (module ou électro) survit aux reconstructions
   if (selection) {
-    const m = findEditable(selection.key, selection.idx);
+    const m = selection.ud.fixture
+      ? current.editables.find((e2) => e2.userData.fixture === selection.ud.fixture)
+      : findEditable(selection.key, selection.idx);
     if (m) attachSelection(m);
     else deselectModule();
   }
@@ -195,6 +197,7 @@ canvas.addEventListener('pointerup', (e) => {
   if (moved > (d.touch ? 10 : 6)) return; // c'était une rotation de caméra
   if (d.touch && held > 400) return;      // appui long = manipulation, pas un choix
   if (planEd.mode() === 'plan') return;   // l'éditeur de plan gère ses propres clics
+  if (moveDrag && moveDrag.freshSelect) return; // ce geste vient de sélectionner : pas d'éditeur en plus
   if (d.touch && !document.getElementById('popover').hidden) {
     hidePopover(); // la sélection (contour + barre) reste : on ferme juste l'éditeur
     return;
@@ -212,6 +215,16 @@ function pickModule(x, y) {
   // flotte jusqu'à ~4 cm devant la hitbox du module.
   if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.05)) {
     const ud = modHit.object.userData;
+    // électro : 1er clic = sélection, 2e clic = ses réglages (fini / style)
+    if (ud.fixture) {
+      if (selection && selection.mesh === modHit.object) {
+        showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+      } else {
+        hidePopover();
+        selectModule(modHit.object);
+      }
+      return;
+    }
     const comp = current.gapComps && current.gapComps[ud.gapKey];
     if (comp) {
       // 1er clic = sélection (déplacer ou paramétrer) ; 2e clic = paramètres
@@ -249,16 +262,22 @@ function findEditable(key, idx) {
   return current.editables.find((m) => m.userData.gapKey === key && m.userData.gapIndex === idx) || null;
 }
 
+const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur' };
+
 function attachSelection(mesh) {
   clearOutline();
   drawOutline(mesh);
   const ud = mesh.userData;
-  selection = { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
-  modbar.querySelector('.mb-title').textContent =
-    `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
-  // un espace vide se « remplit » plutôt qu'il ne se paramètre, et ne se retire pas
+  selection = ud.fixture
+    ? { fixture: ud.fixture, ud, mesh }
+    : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
+  modbar.querySelector('.mb-title').textContent = ud.fixture
+    ? `${FIXTURE_TITLES[ud.fixture]} · ${Math.round(ud.widthIn)} po`
+    : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+  // un espace vide se « remplit » plutôt qu'il ne se paramètre ; l'évier
+  // (plomberie) ne se retire pas
   modbar.querySelector('.mb-edit').textContent = ud.current === 'vide' ? '➕ Ajouter' : '✏️ Paramètres';
-  modbar.querySelector('.mb-del').style.display = ud.current === 'vide' ? 'none' : '';
+  modbar.querySelector('.mb-del').style.display = (ud.current === 'vide' || ud.fixture === 'water') ? 'none' : '';
   modbar.hidden = false;
   positionModbar();
 }
@@ -353,22 +372,48 @@ function arrowTarget(dir) {
 }
 
 const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
+
+// décaler un électro de 3 po (le solveur revalide : fenêtres, dégagements…)
+function nudgeFixture(dir) {
+  const ud = selection.ud;
+  const len = current.focus.wallLens[ud.wall];
+  const pos = Math.min(Math.max(ud.along + dir * 0.075, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
+  setState({ constraints: { [ud.fixture]: { auto: false, wall: ud.wall, pos } } });
+}
+
 modbar.querySelector('.mb-left').addEventListener('click', (e) => {
-  const t = selection && arrowTarget(-1);
+  if (!selection) return;
+  if (selection.ud.fixture) return nudgeFixture(-1);
+  const t = arrowTarget(-1);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
 });
 modbar.querySelector('.mb-right').addEventListener('click', (e) => {
-  const t = selection && arrowTarget(1);
+  if (!selection) return;
+  if (selection.ud.fixture) return nudgeFixture(1);
+  const t = arrowTarget(1);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
 });
 modbar.querySelector('.mb-edit').addEventListener('click', () => {
   if (!selection) return;
-  const comp = current.gapComps[selection.key];
   const r = modbar.getBoundingClientRect();
+  if (selection.ud.fixture) {
+    showSurfaceEditor(r.left, r.bottom + 8, selection.ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+    return;
+  }
+  const comp = current.gapComps[selection.key];
   if (comp) showModuleEditor(r.left, r.bottom + 8, selection.ud, comp);
 });
 modbar.querySelector('.mb-del').addEventListener('click', (e) => {
   if (!selection) return;
+  // électro : retirer = désactiver l'appareil (la hotte part avec la cuisinière)
+  if (selection.ud.fixture) {
+    const off = { stove: { range: false, hood: false }, fridge: { fridge: false }, dw: { dw: false } }[selection.ud.fixture];
+    if (!off) return flashDeny(e.currentTarget);
+    deselectModule();
+    hidePopover();
+    setState({ appliances: off });
+    return;
+  }
   const comp = current.gapComps[selection.key];
   if (!comp || selection.ud.current === 'vide') return flashDeny(e.currentTarget);
   const types = [...comp.types];
@@ -419,20 +464,51 @@ function dragTarget(e) {
   return { key: gKey, idx };
 }
 
+// saisie DIRECTE : pointer sur n'importe quel caisson ou électro = le
+// sélectionner et pouvoir le glisser immédiatement (un seul geste) ; la
+// caméra se manipule depuis le reste de la scène
 canvas.addEventListener('pointerdown', (e) => {
-  if (!selection || e.button !== 0 || planEd.mode() === 'plan' || !current) return;
+  if (e.button !== 0 || planEd.mode() === 'plan' || !current) return;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  if (!raycaster.intersectObject(selection.mesh, false).length) return;
+  const modHit = raycaster.intersectObjects(current.editables, false)[0];
+  if (!modHit) return;
+  // occlusion : à travers un comptoir ou l'îlot, le geste reste une rotation
+  const surfHit = findSurfaceHit();
+  if (surfHit && modHit.distance > surfHit.distance + 0.05) return;
+  const fresh = !selection || selection.mesh !== modHit.object;
+  if (fresh) {
+    hidePopover();
+    selectModule(modHit.object);
+  }
   moveDrag = {
-    x0: e.clientX, y0: e.clientY, started: false,
-    home: { key: selection.key, idx: selection.idx },
+    x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh,
+    home: selection.ud.fixture
+      ? { fixture: selection.ud.fixture, orig: JSON.parse(JSON.stringify(state.constraints[selection.ud.fixture] || null)) }
+      : { key: selection.key, idx: selection.idx },
     saved: {}, savedKeys: new Set(),
   };
   ctx.controls.enabled = false;
-  e.stopImmediatePropagation(); // ni OrbitControls ni le tap-flow ne doivent voir ce geste
+  e.stopImmediatePropagation(); // ni OrbitControls ni le reste ne doivent voir ce geste
   try { canvas.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
 }, { capture: true });
+
+// position cible d'un électro glissé, le long de son mur
+function fixtureDragPos(e) {
+  const ud = selection.ud;
+  const f = current.focus;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, ctx.camera);
+  const pl = new THREE.Plane();
+  if (ud.wall === 'back') pl.set(new THREE.Vector3(0, 0, 1), f.roomD / 2);
+  else if (ud.wall === 'front') pl.set(new THREE.Vector3(0, 0, -1), f.roomD / 2);
+  else pl.set(new THREE.Vector3(1, 0, 0), -(f.planes[ud.wall] - f.a / 2));
+  const hp = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(pl, hp)) return null;
+  const along = alongAxis(ud.wall, hp, f);
+  const len = f.wallLens[ud.wall];
+  return Math.min(Math.max(along, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
+}
 
 canvas.addEventListener('pointermove', (e) => {
   if (!moveDrag || !selection) return;
@@ -443,6 +519,14 @@ canvas.addEventListener('pointermove', (e) => {
   // une application est en vol : attendre la reconstruction, sinon on
   // recalculerait la cible sur des compositions périmées
   if (moveDrag.pending) return;
+  // électro : position manuelle continue, revalidée par le solveur à chaque pas
+  if (selection.ud.fixture) {
+    const pos = fixtureDragPos(e);
+    if (pos == null) return;
+    moveDrag.pending = true;
+    setState({ constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos } } });
+    return;
+  }
   const t = dragTarget(e);
   if (!t || (t.key === selection.key && t.idx === selection.idx)) return;
   // mémoriser les plans d'origine des gaps touchés (annulation par Échap)
@@ -463,10 +547,14 @@ function endModuleDrag(cancelled = false) {
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
-  if (cancelled && selection && d.savedKeys.size) {
-    selection.key = d.home.key;
-    selection.idx = d.home.idx;
-    setState({ gapPlans: Object.fromEntries([...d.savedKeys].map((k) => [k, d.saved[k]])) });
+  if (cancelled && selection) {
+    if (d.home.fixture) {
+      setState({ constraints: { [d.home.fixture]: d.home.orig } });
+    } else if (d.savedKeys.size) {
+      selection.key = d.home.key;
+      selection.idx = d.home.idx;
+      setState({ gapPlans: Object.fromEntries([...d.savedKeys].map((k) => [k, d.saved[k]])) });
+    }
   }
 }
 canvas.addEventListener('pointerup', () => endModuleDrag(), { capture: true });
@@ -537,9 +625,8 @@ canvas.addEventListener('pointermove', (e) => {
   hoverThrottle = now;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  const overSelected = selection && raycaster.intersectObject(selection.mesh, false).length;
-  canvas.style.cursor = overSelected ? 'grab'
-    : raycaster.intersectObjects(current.editables, false).length ? 'pointer' : '';
+  // tout ce qui est éditable se saisit directement : curseur main
+  canvas.style.cursor = raycaster.intersectObjects(current.editables, false).length ? 'grab' : '';
 });
 
 document.addEventListener('pointerdown', (e) => {
