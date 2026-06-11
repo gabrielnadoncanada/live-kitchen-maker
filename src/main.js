@@ -5,7 +5,7 @@ import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, moduleTypeLabel } from './ui.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
 import { computeNkbaWarnings } from './nkba.js';
 import { createPlanEditor } from './planEditor.js';
@@ -18,6 +18,8 @@ const ctx = createScene(canvas);
 
 let current = null;   // { group, manifest, editables, focus }
 let outline = null;
+let selection = null; // module sélectionné { key, idx, ud, mesh } — clic = choisir, puis déplacer ou paramétrer
+let moveDrag = null;  // session de glissement du module sélectionné le long de son mur
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -43,6 +45,14 @@ function rebuild() {
   lastQuote = computeQuote(state, current.manifest);
   renderQuote(lastQuote);
   renderNkba(computeNkbaWarnings(current.nkba));
+
+  // la sélection de module survit aux reconstructions (drag, changement de réglage)
+  if (selection) {
+    const m = findEditable(selection.key, selection.idx);
+    if (m) attachSelection(m);
+    else deselectModule();
+  }
+  if (moveDrag) moveDrag.pending = false; // compositions à jour : le drag peut réappliquer
 }
 let lastQuote = null;
 
@@ -61,6 +71,7 @@ ctx.setTick(() => {
     tmpV.copy(ctx.camera.position).sub(w.point);
     w.group.visible = tmpV.dot(w.normal) > -0.02;
   }
+  positionModbar(); // la mini-barre suit le caisson sélectionné quand la caméra bouge
 });
 
 // un asset GLB qui finit de charger remplace son repli procédural au
@@ -71,7 +82,7 @@ let rebuildTimer = null;
 let lastRebuild = 0;
 subscribe(() => {
   const veil = document.getElementById('loadveil');
-  const dragging = planEd.isDragging();
+  const dragging = planEd.isDragging() || !!(moveDrag && moveDrag.started);
   if (!dragging) veil.classList.add('show');
   clearTimeout(rebuildTimer);
   // pendant un drag en vue plan : throttle (replanification en direct, ~7 fps),
@@ -154,6 +165,7 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
   if (!btn) return;
   document.querySelectorAll('#viewBtns button').forEach((b) => b.classList.toggle('active', b === btn));
   const view = btn.dataset.view;
+  deselectModule(); // la sélection de module n'a de sens qu'en vue 3D
   planEd.setMode(view);
   // coachmark unique du plan (remplace l'ancien hint permanent)
   if (view === 'plan' && !sessionStorage.getItem('coach-plan')) {
@@ -184,8 +196,7 @@ canvas.addEventListener('pointerup', (e) => {
   if (d.touch && held > 400) return;      // appui long = manipulation, pas un choix
   if (planEd.mode() === 'plan') return;   // l'éditeur de plan gère ses propres clics
   if (d.touch && !document.getElementById('popover').hidden) {
-    hidePopover();
-    clearOutline();
+    hidePopover(); // la sélection (contour + barre) reste : on ferme juste l'éditeur
     return;
   }
   pickModule(e.clientX, e.clientY);
@@ -196,23 +207,253 @@ function pickModule(x, y) {
   raycaster.setFromCamera(pointer, ctx.camera);
   const modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
   const surfHit = findSurfaceHit();
-  clearOutline();
-  // le plus proche gagne : on n'édite pas un caisson à travers son comptoir
-  if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.01)) {
+  // le plus proche gagne : on n'édite pas un caisson à travers son comptoir.
+  // Tolérance 5 cm : la façade réelle (portes, panneaux cascade de l'îlot)
+  // flotte jusqu'à ~4 cm devant la hitbox du module.
+  if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.05)) {
     const ud = modHit.object.userData;
     const comp = current.gapComps && current.gapComps[ud.gapKey];
     if (comp) {
-      drawOutline(modHit.object);
-      showModuleEditor(x, y, ud, comp);
+      // 1er clic = sélection (déplacer ou paramétrer) ; 2e clic = paramètres
+      if (selection && selection.mesh === modHit.object) {
+        showModuleEditor(x, y, ud, comp);
+      } else {
+        hidePopover();
+        selectModule(modHit.object);
+      }
       return;
     }
   }
+  deselectModule();
   if (surfHit) {
     showSurfaceEditor(x, y, surfHit.kind);
     return;
   }
   hidePopover();
 }
+
+// ————— sélection de module : mini-barre flottante (déplacer / paramétrer) —————
+const modbar = document.createElement('div');
+modbar.id = 'modbar';
+modbar.hidden = true;
+modbar.innerHTML = `
+  <span class="mb-title"></span>
+  <button class="mb-left" title="Déplacer vers la gauche">◀</button>
+  <button class="mb-right" title="Déplacer vers la droite">▶</button>
+  <button class="mb-edit">✏️ Paramètres</button>
+  <button class="mb-close" title="Désélectionner">✕</button>`;
+document.getElementById('app').appendChild(modbar);
+
+function findEditable(key, idx) {
+  return current.editables.find((m) => m.userData.gapKey === key && m.userData.gapIndex === idx) || null;
+}
+
+function attachSelection(mesh) {
+  clearOutline();
+  drawOutline(mesh);
+  const ud = mesh.userData;
+  selection = { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
+  modbar.querySelector('.mb-title').textContent =
+    `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+  modbar.hidden = false;
+  positionModbar();
+}
+
+function selectModule(mesh) {
+  attachSelection(mesh);
+  if (!sessionStorage.getItem('coach-module')) {
+    sessionStorage.setItem('coach-module', '1');
+    showToast('↔ Glissez le caisson pour le déplacer · re-touchez-le pour ses réglages');
+  }
+}
+
+function deselectModule() {
+  if (!selection) return;
+  selection = null;
+  clearOutline();
+  modbar.hidden = true;
+}
+
+// la barre suit le caisson sélectionné (projection écran, recalée chaque frame)
+function positionModbar() {
+  if (!selection || modbar.hidden) return;
+  const v = new THREE.Vector3();
+  selection.mesh.getWorldPosition(v);
+  v.project(ctx.camera);
+  const r = modbar.getBoundingClientRect();
+  const x = ((v.x + 1) / 2) * window.innerWidth - r.width / 2;
+  const y = ((1 - v.y) / 2) * window.innerHeight - r.height - 46;
+  modbar.style.left = `${Math.round(Math.min(Math.max(x, 8), window.innerWidth - r.width - 8))}px`;
+  modbar.style.top = `${Math.round(Math.min(Math.max(y, 8), window.innerHeight - r.height - 8))}px`;
+}
+
+// gaps d'un mur, triés par position de départ (la clé encode le départ en pouces)
+function gapsOfWall(wall) {
+  return Object.entries(current.gapComps || {})
+    .filter(([k]) => k.startsWith(`${wall}:g`))
+    .map(([key, comp]) => ({ key, comp, start: parseInt(key.split(':g')[1], 10) }))
+    .sort((p, q) => p.start - q.start);
+}
+
+// coordonnée « le long du mur » (m) d'un point monde, pour le mur donné
+const alongAxis = (wall, v, f) =>
+  (wall === 'left' || wall === 'right') ? v.z + f.roomD / 2 : v.x + f.a / 2;
+
+function modsOfGap(key) {
+  return current.editables
+    .filter((m) => m.userData.gapKey === key)
+    .sort((p, q) => p.userData.gapIndex - q.userData.gapIndex);
+}
+
+// vrai si l'ordre des index du gap décroît le long de l'axe (îlot : modules
+// posés en miroir, l'index 0 est à droite dans le monde)
+const tmpA = new THREE.Vector3();
+function gapReversed(key, wall, f) {
+  const mods = modsOfGap(key);
+  if (mods.length < 2) return false;
+  const a0 = alongAxis(wall, mods[0].getWorldPosition(tmpA).clone(), f);
+  const a1 = alongAxis(wall, mods[mods.length - 1].getWorldPosition(tmpA).clone(), f);
+  return a0 > a1;
+}
+
+function applySelectionMove(dstKey, dstIdx) {
+  const r = reorderModule(current.gapComps, selection.key, selection.idx, dstKey, dstIdx);
+  if (!r) return false;
+  selection.key = dstKey;
+  selection.idx = r.idx;
+  setState({ gapPlans: r.plans });
+  return true;
+}
+
+// cible des flèches ◀ ▶ : la position voisine, en passant au gap suivant du
+// même mur quand on atteint un bord. dir est VISUEL (◀ = vers la gauche) :
+// sur un gap inversé (îlot), l'index bouge en sens contraire.
+function arrowTarget(dir) {
+  const comp = current.gapComps[selection.key];
+  if (!comp) return null;
+  const wall = selection.key.split(':')[0];
+  const d = gapReversed(selection.key, wall, current.focus) ? -dir : dir;
+  const ni = selection.idx + d;
+  if (ni >= 0 && ni < comp.widths.length) return { key: selection.key, idx: ni };
+  const gaps = gapsOfWall(wall);
+  const gi = gaps.findIndex((g) => g.key === selection.key);
+  const ng = gaps[gi + d];
+  if (!ng) return null;
+  return { key: ng.key, idx: d > 0 ? 0 : ng.comp.widths.length };
+}
+
+const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
+modbar.querySelector('.mb-left').addEventListener('click', (e) => {
+  const t = selection && arrowTarget(-1);
+  if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
+});
+modbar.querySelector('.mb-right').addEventListener('click', (e) => {
+  const t = selection && arrowTarget(1);
+  if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
+});
+modbar.querySelector('.mb-edit').addEventListener('click', () => {
+  if (!selection) return;
+  const comp = current.gapComps[selection.key];
+  const r = modbar.getBoundingClientRect();
+  if (comp) showModuleEditor(r.left, r.bottom + 8, selection.ud, comp);
+});
+modbar.querySelector('.mb-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
+
+// ————— glissement du caisson sélectionné le long de son mur —————
+// position cible (gap + index) sous le pointeur, sur le mur du module sélectionné.
+// Tout se calcule depuis les positions MONDE réelles des modules (l'îlot pose
+// les siens en miroir : les index décroissent le long de l'axe), jamais depuis
+// un cumul théorique.
+function dragTarget(e) {
+  const wall = selection.key.split(':')[0];
+  const f = current.focus;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, ctx.camera);
+  const pl = new THREE.Plane();
+  if (wall === 'isl') pl.set(new THREE.Vector3(0, 1, 0), -0.45); // plan horizontal à mi-caisson
+  else if (wall === 'back') pl.set(new THREE.Vector3(0, 0, 1), f.roomD / 2);
+  else if (wall === 'front') pl.set(new THREE.Vector3(0, 0, -1), f.roomD / 2);
+  else pl.set(new THREE.Vector3(1, 0, 0), -(f.planes[wall] - f.a / 2));
+  const hp = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(pl, hp)) return null;
+  const alongM = alongAxis(wall, hp, f);
+  // gap visé : celui du module éditable le plus proche du pointeur (même mur)
+  const sameWall = (k) => (wall === 'isl' ? k === 'isl' : k.startsWith(`${wall}:`));
+  let gKey = null, bd = Infinity;
+  for (const m of current.editables) {
+    if (!sameWall(m.userData.gapKey)) continue;
+    const d = Math.abs(alongAxis(wall, m.getWorldPosition(tmpA), f) - alongM);
+    if (d < bd) { bd = d; gKey = m.userData.gapKey; }
+  }
+  if (!gKey) return null;
+  // index d'insertion = nombre de centres de modules (hors module déplacé)
+  // avant le pointeur, remis dans le sens des index du gap
+  const others = modsOfGap(gKey).filter((m) => m !== selection.mesh);
+  let p = 0;
+  for (const m of others) {
+    if (alongM > alongAxis(wall, m.getWorldPosition(tmpA), f)) p++;
+  }
+  const idx = gapReversed(gKey, wall, f) ? others.length - p : p;
+  return { key: gKey, idx };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!selection || e.button !== 0 || planEd.mode() === 'plan' || !current) return;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, ctx.camera);
+  if (!raycaster.intersectObject(selection.mesh, false).length) return;
+  moveDrag = {
+    x0: e.clientX, y0: e.clientY, started: false,
+    home: { key: selection.key, idx: selection.idx },
+    saved: {}, savedKeys: new Set(),
+  };
+  ctx.controls.enabled = false;
+  e.stopImmediatePropagation(); // ni OrbitControls ni le tap-flow ne doivent voir ce geste
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
+}, { capture: true });
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!moveDrag || !selection) return;
+  e.stopImmediatePropagation();
+  const thresh = e.pointerType === 'touch' ? 10 : 6; // aligné sur le filtre de tap
+  if (!moveDrag.started && Math.hypot(e.clientX - moveDrag.x0, e.clientY - moveDrag.y0) < thresh) return;
+  if (!moveDrag.started) { moveDrag.started = true; hidePopover(); canvas.style.cursor = 'grabbing'; }
+  // une application est en vol : attendre la reconstruction, sinon on
+  // recalculerait la cible sur des compositions périmées
+  if (moveDrag.pending) return;
+  const t = dragTarget(e);
+  if (!t || (t.key === selection.key && t.idx === selection.idx)) return;
+  // mémoriser les plans d'origine des gaps touchés (annulation par Échap)
+  for (const k of [selection.key, t.key]) {
+    if (!moveDrag.savedKeys.has(k)) {
+      moveDrag.savedKeys.add(k);
+      moveDrag.saved[k] = (state.gapPlans || {})[k] ?? null;
+    }
+  }
+  if (applySelectionMove(t.key, t.idx)) moveDrag.pending = true;
+}, { capture: true });
+
+// le simple clic (drag jamais démarré) retombe sur le flux de tap existant,
+// qui ouvre les paramètres du module déjà sélectionné
+function endModuleDrag(cancelled = false) {
+  if (!moveDrag) return;
+  const d = moveDrag;
+  moveDrag = null;
+  ctx.controls.enabled = true;
+  canvas.style.cursor = '';
+  if (cancelled && selection && d.savedKeys.size) {
+    selection.key = d.home.key;
+    selection.idx = d.home.idx;
+    setState({ gapPlans: Object.fromEntries([...d.savedKeys].map((k) => [k, d.saved[k]])) });
+  }
+}
+canvas.addEventListener('pointerup', () => endModuleDrag(), { capture: true });
+canvas.addEventListener('pointercancel', () => endModuleDrag(true), { capture: true });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (moveDrag) endModuleDrag(true);
+  else if (selection) { deselectModule(); hidePopover(); }
+});
 
 // un objet est cliquable seulement si toute sa chaîne de parents est visible
 // (exclut les murs escamotés par la maison de poupée, les calques plan/élévation)
@@ -274,7 +515,9 @@ canvas.addEventListener('pointermove', (e) => {
   hoverThrottle = now;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  canvas.style.cursor = raycaster.intersectObjects(current.editables, false).length ? 'pointer' : '';
+  const overSelected = selection && raycaster.intersectObject(selection.mesh, false).length;
+  canvas.style.cursor = overSelected ? 'grab'
+    : raycaster.intersectObjects(current.editables, false).length ? 'pointer' : '';
 });
 
 document.addEventListener('pointerdown', (e) => {
@@ -344,7 +587,23 @@ export async function initApp() {
   buildPanel();
   rebuild();
   document.getElementById('printBtn').textContent = 'Télécharger mon devis (PDF)';
-  if (process.env.NODE_ENV !== 'production') window.__dbg = { ctx, getCurrent: () => current, state, setState };
+  if (process.env.NODE_ENV !== 'production') {
+    window.__dbg = {
+      ctx, getCurrent: () => current, state, setState, pickModule, selection: () => selection,
+      dragTarget: (e) => dragTarget(e), moveDrag: () => moveDrag,
+      pickDebug(x, y) {
+        pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
+        raycaster.setFromCamera(pointer, ctx.camera);
+        const modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
+        const surfHit = findSurfaceHit();
+        return {
+          mod: modHit ? { ud: { ...modHit.object.userData }, d: modHit.distance } : null,
+          surf: surfHit ? { kind: surfHit.kind, d: surfHit.distance } : null,
+          comp: modHit ? !!(current.gapComps && current.gapComps[modHit.object.userData.gapKey]) : null,
+        };
+      },
+    };
+  }
 
   // la 3D d'abord : le devis démarre en pastille (le détail est à un clic)
   document.getElementById('quote').classList.add('collapsed');

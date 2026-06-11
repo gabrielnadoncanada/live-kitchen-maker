@@ -641,6 +641,73 @@ function recomposeWidth(comp, idx, newW, exact) {
   return { widths, types };
 }
 
+// libellé court d'un type de module (mini-barre de sélection)
+export const moduleTypeLabel = (k) => typeDef(k).label;
+
+// Déplace le module srcIdx du gap srcKey vers la position dstIdx du gap dstKey
+// (réordonne si même gap). Retourne { plans, idx } — plans est un patch pour
+// state.gapPlans, idx l'index final du module déplacé — ou null si impossible
+// (capacité insuffisante, segment « exact » de l'îlot).
+export function reorderModule(comps, srcKey, srcIdx, dstKey, dstIdx) {
+  const src = comps[srcKey];
+  if (!src || srcIdx < 0 || srcIdx >= src.widths.length) return null;
+  const aligned = (c) => c.widths.map((_, i) => (c.hinges || [])[i] ?? null);
+  const w = src.widths[srcIdx], t = src.types[srcIdx], h = aligned(src)[srcIdx];
+
+  if (srcKey === dstKey) {
+    const di = Math.max(0, Math.min(dstIdx, src.widths.length - 1));
+    if (di === srcIdx) return null;
+    const widths = [...src.widths], types = [...src.types], hinges = aligned(src);
+    widths.splice(srcIdx, 1); types.splice(srcIdx, 1); hinges.splice(srcIdx, 1);
+    widths.splice(di, 0, w); types.splice(di, 0, t); hinges.splice(di, 0, h);
+    return { plans: { [srcKey]: { widths, types, hinges } }, idx: di };
+  }
+
+  const dst = comps[dstKey];
+  if (!dst || src.exact || dst.exact) return null;
+  // source : retirer le module puis absorber le trou — les voisins s'élargissent
+  // par pas de 3 po, et au-delà un nouveau caisson comble (même logique que
+  // recomposeWidth) pour que le plan reste valide (reste < 9 po)
+  const sw = [...src.widths], st = [...src.types], sh = aligned(src);
+  sw.splice(srcIdx, 1); st.splice(srcIdx, 1); sh.splice(srcIdx, 1);
+  let rest = src.totalIn - sw.reduce((a, b) => a + b, 0);
+  const order = [];
+  for (let d = 0; d < sw.length; d++) {
+    if (srcIdx + d < sw.length) order.push(srcIdx + d);
+    if (srcIdx - 1 - d >= 0) order.push(srcIdx - 1 - d);
+  }
+  for (const j of order) {
+    while (rest >= 9 && sw[j] <= 33) { sw[j] += 3; rest -= 3; }
+  }
+  while (rest >= 9) {
+    const w2 = Math.min(36, Math.floor(rest / 3) * 3);
+    sw.push(w2); st.push(w2 >= 12 ? 'tiroirs' : 'portes'); sh.push(null);
+    rest -= w2;
+  }
+  const dw = [...dst.widths], dt = [...dst.types], dh = aligned(dst);
+  const di = Math.max(0, Math.min(dstIdx, dw.length));
+  // destination pleine (les gaps le sont toujours par construction) : les
+  // voisins du point d'insertion rétrécissent par pas de 3 po pour faire de
+  // la place, dans les limites de leur type
+  let need = dw.reduce((a, b) => a + b, 0) + w - dst.totalIn;
+  if (need > 0.05) {
+    const minOf = (ty) => (ty === 'tiroirs' ? 12 : ty === 'poubelle' ? 18 : ty === 'micro-ondes' ? 27 : ty === 'range-epices' ? 6 : 9);
+    const order2 = dw.map((_, j) => j).sort((p, q) => Math.abs(p + 0.5 - di) - Math.abs(q + 0.5 - di));
+    for (const j of order2) {
+      while (need > 0.05 && dw[j] - 3 >= minOf(dt[j])) { dw[j] -= 3; need -= 3; }
+    }
+    if (need > 0.05) return null;
+  }
+  dw.splice(di, 0, w); dt.splice(di, 0, t); dh.splice(di, 0, h);
+  return {
+    plans: {
+      [srcKey]: sw.length ? { widths: sw, types: st, hinges: sh } : null,
+      [dstKey]: { widths: dw, types: dt, hinges: dh },
+    },
+    idx: di,
+  };
+}
+
 export function showModuleEditor(x, y, data, comp) {
   const pop = document.getElementById('popover');
   const opts = document.getElementById('popoverOpts');
