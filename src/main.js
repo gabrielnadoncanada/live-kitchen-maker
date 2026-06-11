@@ -241,6 +241,7 @@ modbar.innerHTML = `
   <button class="mb-left" title="Déplacer vers la gauche">◀</button>
   <button class="mb-right" title="Déplacer vers la droite">▶</button>
   <button class="mb-edit">✏️ Paramètres</button>
+  <button class="mb-del" title="Retirer ce caisson">🗑</button>
   <button class="mb-close" title="Désélectionner">✕</button>`;
 document.getElementById('app').appendChild(modbar);
 
@@ -255,6 +256,9 @@ function attachSelection(mesh) {
   selection = { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
   modbar.querySelector('.mb-title').textContent =
     `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+  // un espace vide se « remplit » plutôt qu'il ne se paramètre, et ne se retire pas
+  modbar.querySelector('.mb-edit').textContent = ud.current === 'vide' ? '➕ Ajouter' : '✏️ Paramètres';
+  modbar.querySelector('.mb-del').style.display = ud.current === 'vide' ? 'none' : '';
   modbar.hidden = false;
   positionModbar();
 }
@@ -287,11 +291,17 @@ function positionModbar() {
   modbar.style.top = `${Math.round(Math.min(Math.max(y, 8), window.innerHeight - r.height - 8))}px`;
 }
 
-// gaps d'un mur, triés par position de départ (la clé encode le départ en pouces)
-function gapsOfWall(wall) {
+// préfixe de genre d'un gap : 'back:g' (bas), 'back:u' (murales), 'isl' (îlot) —
+// les déplacements ne traversent jamais les genres
+const gapPrefix = (key) => (key === 'isl' ? 'isl' : key.slice(0, key.search(/\d+$/)));
+
+// gaps du même mur ET du même genre que key, triés par position de départ
+function gapsLike(key) {
+  if (key === 'isl') return [{ key: 'isl', comp: current.gapComps.isl, start: 0 }];
+  const pre = gapPrefix(key);
   return Object.entries(current.gapComps || {})
-    .filter(([k]) => k.startsWith(`${wall}:g`))
-    .map(([key, comp]) => ({ key, comp, start: parseInt(key.split(':g')[1], 10) }))
+    .filter(([k]) => k.startsWith(pre) && /^\d+$/.test(k.slice(pre.length)))
+    .map(([k, comp]) => ({ key: k, comp, start: parseInt(k.slice(pre.length), 10) }))
     .sort((p, q) => p.start - q.start);
 }
 
@@ -335,7 +345,7 @@ function arrowTarget(dir) {
   const d = gapReversed(selection.key, wall, current.focus) ? -dir : dir;
   const ni = selection.idx + d;
   if (ni >= 0 && ni < comp.widths.length) return { key: selection.key, idx: ni };
-  const gaps = gapsOfWall(wall);
+  const gaps = gapsLike(selection.key);
   const gi = gaps.findIndex((g) => g.key === selection.key);
   const ng = gaps[gi + d];
   if (!ng) return null;
@@ -357,6 +367,17 @@ modbar.querySelector('.mb-edit').addEventListener('click', () => {
   const r = modbar.getBoundingClientRect();
   if (comp) showModuleEditor(r.left, r.bottom + 8, selection.ud, comp);
 });
+modbar.querySelector('.mb-del').addEventListener('click', (e) => {
+  if (!selection) return;
+  const comp = current.gapComps[selection.key];
+  if (!comp || selection.ud.current === 'vide') return flashDeny(e.currentTarget);
+  const types = [...comp.types];
+  types[selection.idx] = 'vide';
+  setState({ gapPlans: { [selection.key]: {
+    widths: [...comp.widths], types,
+    hinges: comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null),
+  } } });
+});
 modbar.querySelector('.mb-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
 
 // ————— glissement du caisson sélectionné le long de son mur —————
@@ -377,11 +398,12 @@ function dragTarget(e) {
   const hp = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(pl, hp)) return null;
   const alongM = alongAxis(wall, hp, f);
-  // gap visé : celui du module éditable le plus proche du pointeur (même mur)
-  const sameWall = (k) => (wall === 'isl' ? k === 'isl' : k.startsWith(`${wall}:`));
+  // gap visé : celui du module éditable le plus proche du pointeur
+  // (même mur ET même genre — un bas ne se glisse pas dans les murales)
+  const pre = gapPrefix(selection.key);
   let gKey = null, bd = Infinity;
   for (const m of current.editables) {
-    if (!sameWall(m.userData.gapKey)) continue;
+    if (gapPrefix(m.userData.gapKey) !== pre) continue;
     const d = Math.abs(alongAxis(wall, m.getWorldPosition(tmpA), f) - alongM);
     if (d < bd) { bd = d; gKey = m.userData.gapKey; }
   }

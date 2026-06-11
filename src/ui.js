@@ -593,7 +593,12 @@ const MODULE_TYPES = [
   { key: 'range-epices', label: 'Range-épices', ico: '⫶', ok: (w) => w >= 6 && w <= 12, snap: () => 9 },
   { key: 'poubelle', label: 'Tiroir à déchets', ico: '♻', ok: (w) => w === 18, snap: () => 18 },
   { key: 'micro-ondes', label: 'Micro-ondes', ico: '▦', ok: (w) => w === 27, snap: () => 27 },
+  // retirer un caisson = le remplacer par de l'espace vide (et inversement :
+  // cliquer l'espace vide permet d'y remettre un caisson)
+  { key: 'vide', label: 'Espace vide', ico: '∅', ok: () => true, snap: (w) => w },
 ];
+// les armoires murales n'offrent que ces types
+const UPPER_KEYS = ['portes', 'ouvert', 'vide'];
 const typeDef = (k) => MODULE_TYPES.find((t) => t.key === k) || MODULE_TYPES[0];
 const widthsFor = (t) =>
   t === 'range-epices' ? [6, 9, 12]
@@ -634,7 +639,7 @@ function recomposeWidth(comp, idx, newW, exact) {
   while (rest >= 9) {
     const w2 = Math.min(36, Math.floor(rest / 3) * 3);
     widths.push(w2);
-    types.push(w2 >= 12 ? 'tiroirs' : 'portes');
+    types.push(comp.upper ? 'portes' : w2 >= 12 ? 'tiroirs' : 'portes');
     rest -= w2;
   }
   if (exact && rest > 0.01) return null;
@@ -665,6 +670,7 @@ export function reorderModule(comps, srcKey, srcIdx, dstKey, dstIdx) {
 
   const dst = comps[dstKey];
   if (!dst || src.exact || dst.exact) return null;
+  if (!!src.upper !== !!dst.upper) return null; // pas de transfert bas ↔ murales
   // source : retirer le module puis absorber le trou — les voisins s'élargissent
   // par pas de 3 po, et au-delà un nouveau caisson comble (même logique que
   // recomposeWidth) pour que le plan reste valide (reste < 9 po)
@@ -681,7 +687,7 @@ export function reorderModule(comps, srcKey, srcIdx, dstKey, dstIdx) {
   }
   while (rest >= 9) {
     const w2 = Math.min(36, Math.floor(rest / 3) * 3);
-    sw.push(w2); st.push(w2 >= 12 ? 'tiroirs' : 'portes'); sh.push(null);
+    sw.push(w2); st.push(src.upper ? 'portes' : w2 >= 12 ? 'tiroirs' : 'portes'); sh.push(null);
     rest -= w2;
   }
   const dw = [...dst.widths], dt = [...dst.types], dh = aligned(dst);
@@ -720,7 +726,8 @@ export function showModuleEditor(x, y, data, comp) {
   const flash = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
   const apply = (widths, types, hinges = null) => { writePlan(gapKey, widths, types, hinges); hidePopover(); };
 
-  for (const t of MODULE_TYPES) {
+  const typeList = data.upper ? MODULE_TYPES.filter((t) => UPPER_KEYS.includes(t.key)) : MODULE_TYPES;
+  for (const t of typeList) {
     const b = el(`<button class="${t.key === current ? 'active' : ''}">
       <span class="ico">${t.ico}</span>${t.label}${t.ok(widthIn) ? '' : `<small>→ ${t.snap(widthIn)} po</small>`}
     </button>`);
@@ -754,8 +761,8 @@ export function showModuleEditor(x, y, data, comp) {
     opts.append(chips);
   }
 
-  // — REQ-910 : sens des charnières (portes simples seulement, ≤ 21 po)
-  if (current === 'portes' && widthIn <= 21) {
+  // — REQ-910 : sens des charnières (portes simples seulement, ≤ 21 po, bas seulement)
+  if (current === 'portes' && widthIn <= 21 && !data.upper) {
     opts.append(el('<div class="pop-label">Charnières (ouverture)</div>'));
     const hinge = (comp.hinges || [])[gapIndex] || 'gauche';
     const chips = el('<div class="pop-chips"></div>');

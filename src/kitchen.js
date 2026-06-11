@@ -170,6 +170,8 @@ function buildBase(w, type, mats, manifest, widthIn = null, hinge = null) {
     return g;
   }
 
+  if (type === 'vide') return g; // caisson retiré : l'espace reste libre
+
   g.add(box(w, PLINTH, BASE_D - 0.07, finish, w / 2, PLINTH / 2, (BASE_D - 0.07) / 2));
 
   if (type === 'ouvert') {
@@ -520,6 +522,25 @@ function buildIslandHood(steel) {
 }
 
 // ——— armoire murale ———
+// ——— armoire murale ouverte (niche sans portes) ———
+function buildWallOpen(w, mats, manifest, widthIn = null) {
+  const { finish } = mats;
+  const S = fixedMats();
+  const g = new THREE.Group();
+  const t = 0.018, D = WALL_CAB_D - 0.02;
+  g.add(box(t, WALL_CAB_H, D, finish, t / 2, WALL_CAB_H / 2, D / 2));
+  g.add(box(t, WALL_CAB_H, D, finish, w - t / 2, WALL_CAB_H / 2, D / 2));
+  g.add(box(w, t, D, finish, w / 2, t / 2, D / 2));
+  g.add(box(w, t, D, finish, w / 2, WALL_CAB_H - t / 2, D / 2));
+  g.add(box(w - t * 2, WALL_CAB_H - t * 2, 0.012, S.interior, w / 2, WALL_CAB_H / 2, 0.022));
+  for (const fy of [1 / 3, 2 / 3]) {
+    g.add(box(w - t * 2, t, D - 0.035, S.interior, w / 2, WALL_CAB_H * fy, D / 2));
+  }
+  const sku = findSku(WALL_FAMILY, Math.round(widthIn ?? w / IN));
+  if (!manifest.addSku(sku, `Armoire murale ouverte ${Math.round(widthIn ?? w / IN)} po`, { zone: 'upper' })) manifest.add('mur');
+  return g;
+}
+
 function buildWallCab(w, mats, manifest, widthIn = null) {
   const { finish, handleKind, handleMat, doorStyle, zone = 'base' } = mats;
   const g = new THREE.Group();
@@ -1720,10 +1741,10 @@ export function buildKitchen(state) {
         }
         if (type === 'frigo' || type === 'garde-manger' || type === 'four-mural') {
           addSolid(wallKey, along, along + slot.w, 0, type === 'frigo' ? 0.7 : PANTRY_D, 0, TALL_H, 'caisson', type);
-        } else {
+        } else if (type !== 'vide') {
           addSolid(wallKey, along, along + slot.w, 0, BASE_D, 0, PLINTH + CARCASS_H, 'caisson', type);
         }
-        if (type !== 'cuisiniere') plinthLin += slot.w;
+        if (type !== 'cuisiniere' && type !== 'vide') plinthLin += slot.w;
         g.position.copy(pl.pos);
         g.rotation.y = pl.rotY;
         inner.add(g);
@@ -1956,52 +1977,98 @@ export function buildKitchen(state) {
     for (const tall of [placed.frigo, placed.pantry, placed.four]) {
       if (tall && tall.wall === wk) shelters.push(tall.along - tall.w / 2, tall.along + tall.w / 2);
     }
+    let upSeq = 0;
     for (const [z0, z1] of zones) {
       if (z1 - z0 < 0.34) continue;
-      addSolid(wk, z0, z1, 0, WALL_CAB_D, WALL_BOT, WALL_BOT + WALL_CAB_H, 'caisson', 'murales');
-      // REQ-909 : panneau d'extrémité mural (WEP) sur chaque bout exposé,
-      // l'équivalent haut de la fausse porte de bout des bas (REQ-711)
-      for (const [end, side] of [[z0, 'debut'], [z1, 'fin']]) {
-        if (shelters.some((s2) => Math.abs(s2 - end) < 0.06)) continue;
-        const eg = new THREE.Group();
-        const f = makeFront(WALL_CAB_D - 0.02, WALL_CAB_H - 0.015, upFinish, state.doorStyle);
-        f.rotation.y = side === 'debut' ? -Math.PI / 2 : Math.PI / 2;
-        f.position.set(side === 'debut' ? -0.009 : 0.009, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2);
-        eg.add(f);
-        const pl2 = centeredPlacement(wk, end, WALL_BOT);
-        eg.position.copy(pl2.pos);
-        eg.rotation.y = pl2.rotY;
-        inner.add(eg);
-        const wep = findSku('wallEndPanel', wch === 42 ? 48 : wch);
-        manifest.addSku(wep, 'Panneau d’extrémité mural (WEP)', { zone: 'upper' });
+      // REQ-1001 étendu aux murales : composition persistée par zone — chaque
+      // armoire murale est éditable (portes / niche ouverte / espace vide)
+      const gapKey = `${wk}:u${Math.round(z0 / IN)}`;
+      const comp = { totalIn: (z1 - z0) / IN, widths: [], types: [], hinges: [], upper: true };
+      const pieces = [];
+      let gi = 0;
+      for (const piece of composeGap(gapKey, z1 - z0)) {
+        if (piece.filler) { pieces.push({ ...piece, type: 'filler' }); continue; }
+        const t = ['portes', 'ouvert', 'vide'].includes(piece.planType) ? piece.planType : 'portes';
+        pieces.push({ ...piece, type: t, gapIndex: gi });
+        comp.widths.push(piece.widthIn);
+        comp.types.push(t);
+        comp.hinges.push(piece.planHinge || null);
+        gi++;
       }
-      // REQ-906 : moulure couronne sur le dessus du ruban d'armoires murales
-      addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
-        WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
-      crownLin += z1 - z0;
-      // REQ-907 : valance lumineuse sous le ruban — cache la bande LED sous-armoire
-      addBoxRect(wk, z0 - 0.01, z1 + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.02,
-        WALL_BOT - 0.05, WALL_BOT + 0.002, upFinish);
-      valanceLin += z1 - z0;
+      if (comp.widths.length) gapComps[gapKey] = comp;
+      // rubans contigus de pièces non vides : couronne, valance, filet AABB et
+      // panneaux d'extrémité s'appliquent par ruban (un caisson retiré coupe le ruban)
+      const runs = [];
       let cx = z0;
-      for (const piece of catalogWidths(z1 - z0)) {
-        const pl = modulePlacement(wk, cx, piece.w, WALL_BOT);
-        if (piece.filler) {
-          // caisson plein du mur jusqu'au plan des façades — jamais une lamelle flottante
-          const fg = new THREE.Group();
-          fg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, WALL_CAB_D - 0.02, upFinish,
-            piece.w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
-          fg.position.copy(pl.pos);
-          fg.rotation.y = pl.rotY;
-          inner.add(fg);
-          manifest.addSku(fillerSku(piece.widthIn), 'Filler de finition (mural)', { zone: 'upper' });
-        } else {
-          const wc = buildWallCab(piece.w, matsUpper, manifest, piece.widthIn);
-          wc.position.copy(pl.pos);
-          wc.rotation.y = pl.rotY;
-          inner.add(wc);
+      for (const piece of pieces) {
+        piece.at = cx;
+        if (piece.type !== 'vide') {
+          const last = runs[runs.length - 1];
+          if (last && Math.abs(last.end - cx) < 0.001) last.end = cx + piece.w;
+          else runs.push({ start: cx, end: cx + piece.w });
         }
         cx += piece.w;
+      }
+      for (const run of runs) {
+        addSolid(wk, run.start, run.end, 0, WALL_CAB_D, WALL_BOT, WALL_BOT + WALL_CAB_H, 'caisson', 'murales');
+        // REQ-909 : panneau d'extrémité mural (WEP) sur chaque bout exposé,
+        // l'équivalent haut de la fausse porte de bout des bas (REQ-711)
+        for (const [end, side] of [[run.start, 'debut'], [run.end, 'fin']]) {
+          if (shelters.some((s2) => Math.abs(s2 - end) < 0.06)) continue;
+          const eg = new THREE.Group();
+          const f = makeFront(WALL_CAB_D - 0.02, WALL_CAB_H - 0.015, upFinish, state.doorStyle);
+          f.rotation.y = side === 'debut' ? -Math.PI / 2 : Math.PI / 2;
+          f.position.set(side === 'debut' ? -0.009 : 0.009, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2);
+          eg.add(f);
+          const pl2 = centeredPlacement(wk, end, WALL_BOT);
+          eg.position.copy(pl2.pos);
+          eg.rotation.y = pl2.rotY;
+          inner.add(eg);
+          const wep = findSku('wallEndPanel', wch === 42 ? 48 : wch);
+          manifest.addSku(wep, 'Panneau d’extrémité mural (WEP)', { zone: 'upper' });
+        }
+        // REQ-906 : moulure couronne sur le dessus du ruban d'armoires murales
+        addBoxRect(wk, run.start - 0.01, run.end + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.045,
+          WALL_BOT + WALL_CAB_H, WALL_BOT + WALL_CAB_H + 0.07, upFinish);
+        crownLin += run.end - run.start;
+        // REQ-907 : valance lumineuse sous le ruban — cache la bande LED sous-armoire
+        addBoxRect(wk, run.start - 0.01, run.end + 0.01, WALL_CAB_D - 0.03, WALL_CAB_D + 0.02,
+          WALL_BOT - 0.05, WALL_BOT + 0.002, upFinish);
+        valanceLin += run.end - run.start;
+      }
+      for (const piece of pieces) {
+        const pl = modulePlacement(wk, piece.at, piece.w, WALL_BOT);
+        let pg;
+        if (piece.type === 'filler') {
+          // caisson plein du mur jusqu'au plan des façades — jamais une lamelle flottante
+          pg = new THREE.Group();
+          pg.add(box(Math.max(piece.w - 0.002, 0.008), WALL_CAB_H, WALL_CAB_D - 0.02, upFinish,
+            piece.w / 2, WALL_CAB_H / 2, (WALL_CAB_D - 0.02) / 2));
+          manifest.addSku(fillerSku(piece.widthIn), 'Filler de finition (mural)', { zone: 'upper' });
+        } else if (piece.type === 'vide') {
+          pg = new THREE.Group(); // espace libre — seule la hitbox de sélection reste
+        } else if (piece.type === 'ouvert') {
+          pg = buildWallOpen(piece.w, matsUpper, manifest, piece.widthIn);
+        } else {
+          pg = buildWallCab(piece.w, matsUpper, manifest, piece.widthIn);
+        }
+        pg.position.copy(pl.pos);
+        pg.rotation.y = pl.rotY;
+        inner.add(pg);
+        if (piece.type !== 'filler') {
+          const hit = new THREE.Mesh(
+            new THREE.BoxGeometry(piece.w, WALL_CAB_H, WALL_CAB_D),
+            new THREE.MeshBasicMaterial({ visible: false })
+          );
+          hit.position.set(piece.w / 2, WALL_CAB_H / 2, WALL_CAB_D / 2);
+          hit.userData = {
+            editable: true, moduleId: `${wk}:u${++upSeq}`, current: piece.type,
+            width: piece.w, widthIn: piece.widthIn, gapKey, gapIndex: piece.gapIndex,
+            upper: true, hinge: null,
+          };
+          pg.add(hit);
+          editables.push(hit);
+        }
       }
     }
   }
@@ -2096,8 +2163,10 @@ export function buildKitchen(state) {
         g.add(hit);
         editables.push(hit);
       }
-      manifest.islandModules++;
-      plinthLin += slot.w;
+      if (type !== 'vide') {
+        manifest.islandModules++;
+        plinthLin += slot.w;
+      }
       cx -= slot.w;
     });
     // évier d'îlot : cuve + robinet tournés vers le côté repas
