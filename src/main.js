@@ -611,6 +611,21 @@ function showDims(leftIn, rightIn) {
   dimsChip.style.top = `${Math.round(((1 - v.y) / 2) * window.innerHeight - r.height - 6)}px`;
 }
 
+// position magnétique dans une plage [a0, a1] : collé au voisin/mur sous
+// 4 po d'attraction, sinon par crans de 3 po (le pas du catalogue) — le
+// fantôme « clique » de position en position et les cotes restent entières.
+// Retourne { c, stuck } (stuck = collé bord à bord).
+const SNAP_MAG = 0.1; // ~4 po d'attraction aux bords
+function magnetize(along, w, a0, a1) {
+  let c = Math.min(Math.max(along, a0 + w / 2), a1 - w / 2);
+  if (c - w / 2 - a0 < SNAP_MAG) return { c: a0 + w / 2, stuck: true };
+  if (a1 - c - w / 2 < SNAP_MAG) return { c: a1 - w / 2, stuck: true };
+  const step = 3 * IN;
+  c = a0 + w / 2 + Math.round((c - w / 2 - a0) / step) * step;
+  c = Math.min(Math.max(c, a0 + w / 2), a1 - w / 2);
+  return { c, stuck: false };
+}
+
 // plages libres ABSOLUES (m, coord pièce) où le module saisi peut se poser :
 // les vides du même mur/genre, plus sa propre place actuelle
 function moduleFreeRuns() {
@@ -762,13 +777,17 @@ canvas.addEventListener('pointermove', (e) => {
   const ud = selection.ud;
   const toWorld = (along) => along - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
 
-  // électro : suit le curseur librement (le solveur revalidera au lâcher)
+  // électro : crans de 3 po + aimant aux extrémités du mur (le solveur
+  // revalidera au lâcher : fenêtres, dégagements…)
   if (ud.fixture) {
-    const pos = fixtureDragPos(e);
-    if (pos == null) return;
-    ghost.mesh.position[ghost.axis] = toWorld(pos);
+    const along = cursorAlong(ud.wall, e);
+    if (along == null) return;
+    const len = f.wallLens[ud.wall];
+    const m2 = magnetize(along, ud.width, 0.08, len - 0.08);
+    ghost.mesh.position[ghost.axis] = toWorld(m2.c);
     ghostTint(true);
-    ghost.drop = { kind: 'fixture', pos };
+    ghost.edgeMat.color.setHex(m2.stuck ? 0xfff3da : GHOST_OK);
+    ghost.drop = { kind: 'fixture', pos: m2.c };
     return;
   }
   // fenêtre / porte : le fantôme se pose sur la position résolue (REQ-802) ;
@@ -789,15 +808,16 @@ canvas.addEventListener('pointermove', (e) => {
   const w = ud.width;
   let best = null, bd = Infinity;
   for (const r of moduleFreeRuns()) {
-    const c = Math.min(Math.max(along, r.a0 + w / 2), r.a1 - w / 2);
-    const d2 = Math.abs(c - along);
-    if (d2 < bd) { bd = d2; best = { ...r, c }; }
+    const m2 = magnetize(along, w, r.a0, r.a1);
+    const d2 = Math.abs(m2.c - along);
+    if (d2 < bd) { bd = d2; best = { ...r, ...m2 }; }
   }
   // un run sans aucun jeu (= sa propre place dans un mur plein) ne « tient »
   // le fantôme que si le curseur reste proche ; au-delà, on prévisualise l'échange
   if (best && (best.a1 - best.a0 - w > 0.04 || bd < 0.18)) {
     ghost.mesh.position[ghost.axis] = toWorld(best.c);
     ghostTint(true);
+    ghost.edgeMat.color.setHex(best.stuck ? 0xfff3da : GHOST_OK); // contour vif quand collé
     const dimL = (best.c - w / 2 - best.a0) / IN, dimR = (best.a1 - best.c - w / 2) / IN;
     if (dimL + dimR >= 1) showDims(dimL, dimR);
     else dimsChip.hidden = true;
@@ -949,12 +969,12 @@ function paletteModulePreview(e, it) {
     push();
     for (const r of runs) {
       if (r[1] - r[0] < wM - 0.001) continue;
-      const c = Math.min(Math.max(along, r[0] + wM / 2), r[1] - wM / 2);
+      const m2 = magnetize(along, wM, r[0], r[1]);
       const axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
       const p = ref.getWorldPosition(tmpA.clone());
-      p[axis] = c - (axis === 'x' ? f.a / 2 : f.roomD / 2);
+      p[axis] = m2.c - (axis === 'x' ? f.a / 2 : f.roomD / 2);
       const score = raycaster.ray.distanceToPoint(p);
-      if (score < bd) { bd = score; best = { k, c, a0: r[0], a1: r[1], startM, totalM, rev, axis, ref, p: p.clone(), wM }; }
+      if (score < bd) { bd = score; best = { k, c: m2.c, stuck: m2.stuck, a0: r[0], a1: r[1], startM, totalM, rev, axis, ref, p: p.clone(), wM }; }
     }
   }
   return best;
@@ -1006,6 +1026,7 @@ document.addEventListener('pointermove', (e) => {
     ghost.mesh.quaternion.copy(t.ref.getWorldQuaternion(new THREE.Quaternion()));
     ghost.axis = t.axis;
     ghostTint(true);
+    ghost.edgeMat.color.setHex(t.stuck ? 0xfff3da : GHOST_OK);
     showDims((t.c - t.wM / 2 - t.a0) / IN, (t.a1 - t.c - t.wM / 2) / IN);
     const offIn = t.rev ? (t.startM + t.totalM - t.c) / IN : (t.c - t.startM) / IN;
     ghost.drop = { kind: 'pal-module', gapKey: t.k, offIn };
