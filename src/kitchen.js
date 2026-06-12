@@ -900,6 +900,11 @@ function catalogWidths(len) {
 // calls s'effondrent (et la passe d'ombre avec). Les hitbox éditables restent
 // des meshes séparés (raycast), et les conteneurs escamotables (murs, plafond,
 // îlot, calques plan/élévation) se fusionnent chacun pour soi.
+// le module SÉLECTIONNÉ est exclu de la fusion : son groupe garde ses meshes
+// et peut être déplacé en direct pendant le drag (le vrai caisson suit le doigt)
+let detachedSel = null;
+export function setDetachedModule(d) { detachedSel = d; }
+
 function mergeStatic(container, skip = new Set()) {
   const buckets = new Map();
   const doomed = [];
@@ -909,7 +914,7 @@ function mergeStatic(container, skip = new Set()) {
     // les assets GLB (userData.sharedAsset) gardent leur mesh : leur géométrie
     // est partagée avec le cache d'assets3d — la fusionner ici la détruirait
     if (!o.isMesh || o.userData.editable || o.userData.sharedAsset || Array.isArray(o.material)) return;
-    for (let p = o; p && p !== container; p = p.parent) if (skip.has(p)) return;
+    for (let p = o; p && p !== container; p = p.parent) if (skip.has(p) || p.userData.detachedKeep) return;
     const attrs = Object.keys(o.geometry.attributes).sort().join(',');
     const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${attrs}`;
     let b = buckets.get(key);
@@ -1880,6 +1885,11 @@ export function buildKitchen(state) {
           g.add(hit);
           editables.push(hit);
         }
+        // module sélectionné : hors fusion, déplaçable en direct pendant le drag
+        if (detachedSel && ((detachedSel.key === slot.gapKey && detachedSel.idx === slot.gapIndex)
+          || (detachedSel.fixture && { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' }[type] === detachedSel.fixture))) {
+          g.userData.detachedKeep = true;
+        }
         // les électros aussi sont saisissables : glisser = déplacer (position
         // manuelle re-résolue par le solveur), corbeille = retirer
         const FIXTURE_KEYS = { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' };
@@ -2236,6 +2246,9 @@ export function buildKitchen(state) {
         pg.position.copy(pl.pos);
         pg.rotation.y = pl.rotY;
         inner.add(pg);
+        if (detachedSel && detachedSel.key === gapKey && detachedSel.idx === piece.gapIndex) {
+          pg.userData.detachedKeep = true;
+        }
         if (piece.type !== 'filler') {
           const hit = new THREE.Mesh(
             new THREE.BoxGeometry(piece.w, WALL_CAB_H, WALL_CAB_D),
@@ -2321,6 +2334,7 @@ export function buildKitchen(state) {
       const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn, slot.hinge);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
+      if (detachedSel && detachedSel.key === 'isl' && detachedSel.idx === i) g.userData.detachedKeep = true;
       ig.add(g);
       if (type === 'evier') {
         placed.evier = { wall: 'isl', isl: true, x: center, z: islZ0 + 0.3, along: center, w: slot.w };

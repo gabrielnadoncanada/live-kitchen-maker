@@ -1,7 +1,7 @@
 import './styles.css';
 import * as THREE from 'three';
 import { createScene } from './scene.js';
-import { buildKitchen, disposeKitchen } from './kitchen.js';
+import { buildKitchen, disposeKitchen, setDetachedModule } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe, undo, redo, canUndo, canRedo } from './state.js';
 import { computeQuote } from './pricing.js';
@@ -95,6 +95,11 @@ ctx.setTick(() => {
     w.group.visible = tmpV.dot(w.normal) > -0.02;
   }
   positionModbar(); // la mini-barre suit le caisson sélectionné quand la caméra bouge
+  if (outline && outlineFlash) {
+    const f3 = (performance.now() - outlineFlash) / 500;
+    if (f3 >= 1) { outline.material.color.set(getTenant().accentBright); outlineFlash = 0; }
+    else outline.material.color.set('#ffffff').lerp(new THREE.Color(getTenant().accentBright), f3);
+  }
   if (settle) {
     const f2 = (performance.now() - settle.t0) / 200;
     if (f2 >= 1) { settle.obj.scale.setScalar(1); settle = null; }
@@ -317,9 +322,11 @@ function findEditable(key, idx) {
 const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur' };
 const CORNER_TITLES = { bl: 'Caisson de coin', br: 'Caisson de coin', ul: 'Coin mural', ur: 'Coin mural' };
 
+let outlineFlash = 0; // le contour flashe blanc → laiton à la sélection (remarquable)
 function attachSelection(mesh) {
   clearOutline();
   drawOutline(mesh);
+  outlineFlash = performance.now();
   const ud = mesh.userData;
   selection = ud.fixture
     ? { fixture: ud.fixture, ud, mesh }
@@ -348,8 +355,25 @@ function attachSelection(mesh) {
 }
 document.addEventListener('atelier:deselect', () => { deselectModule(); hidePopover(); });
 
+// le module sélectionné est exclu de la fusion de géométrie : son groupe garde
+// ses meshes et le VRAI caisson peut suivre le doigt pendant le drag
+let detachedKey = null;
+function ensureDetached() {
+  const k = !selection ? null
+    : selection.ud.fixture ? `f:${selection.ud.fixture}`
+    : (selection.ud.opening || selection.ud.corner) ? null
+    : `${selection.key}#${selection.idx}`;
+  if (k === detachedKey) return;
+  detachedKey = k;
+  setDetachedModule(!k ? null
+    : selection.ud.fixture ? { fixture: selection.ud.fixture }
+    : { key: selection.key, idx: selection.idx });
+  rebuild();
+}
+
 function selectModule(mesh) {
   attachSelection(mesh);
+  ensureDetached();
   if (!sessionStorage.getItem('coach-module')) {
     sessionStorage.setItem('coach-module', '1');
     showToast(mobileMq.matches
@@ -363,6 +387,9 @@ function deselectModule() {
   selection = null;
   clearOutline();
   modbar.hidden = true;
+  // la re-fusion attend la prochaine reconstruction naturelle (aucun coût ici)
+  detachedKey = null;
+  setDetachedModule(null);
 }
 
 // la barre suit le caisson sélectionné (projection écran, recalée chaque frame) ;
@@ -594,19 +621,51 @@ function makeGhost() {
   return g;
 }
 
+// fantôme « vivant » : le VRAI caisson (détaché de la fusion) suit le doigt,
+// avec une empreinte de validité au sol — plus de boîte abstraite
+function makeLiveGhost() {
+  const src = selection.mesh;
+  const p = src.geometry.parameters;
+  const wall = selection.ud.wall || (selection.key || '').split(':')[0];
+  const axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
+  const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.4, depthWrite: false });
+  const foot = new THREE.Mesh(new THREE.PlaneGeometry(p.width, p.depth), mat);
+  const wp = src.getWorldPosition(new THREE.Vector3());
+  const wq = src.getWorldQuaternion(new THREE.Quaternion());
+  foot.position.set(wp.x, 0.012, wp.z);
+  foot.quaternion.copy(wq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
+  ctx.scene.add(foot);
+  const grp = src.parent;
+  const live = grp && grp.userData.detachedKeep ? grp : null;
+  if (live) clearOutline(); // le caisson en mouvement EST le feedback
+  return {
+    mesh: foot, mat, edgeMat: null, axis, drop: null,
+    live, liveOrig: live ? live.position.clone() : null,
+    c0: wp[axis], chipY: wp.y + p.height / 2,
+  };
+}
+
+// positionne le fantôme (empreinte + vrai caisson) au centre cRoom (coord pièce, m)
+function ghostPlace(cRoom) {
+  const f = current.focus;
+  const wc = cRoom - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
+  ghost.mesh.position[ghost.axis] = wc;
+  if (ghost.live) ghost.live.position[ghost.axis] = ghost.liveOrig[ghost.axis] + (wc - ghost.c0);
+}
+
 function killGhost() {
   if (!ghost) return;
   ctx.scene.remove(ghost.mesh);
   ghost.mesh.geometry.dispose();
   ghost.mat.dispose();
-  ghost.edgeMat.dispose();
+  if (ghost.edgeMat) ghost.edgeMat.dispose();
   ghost = null;
   dimsChip.hidden = true;
 }
 
 function ghostTint(ok) {
   ghost.mat.color.setHex(ok ? GHOST_OK : GHOST_BAD);
-  ghost.edgeMat.color.setHex(ok ? GHOST_OK : GHOST_BAD);
+  if (ghost.edgeMat) ghost.edgeMat.color.setHex(ok ? GHOST_OK : GHOST_BAD);
 }
 
 // chip de cotes au-dessus du fantôme : « ← 13 po | 18 po → »
@@ -614,7 +673,7 @@ function showDims(leftIn, rightIn) {
   dimsChip.textContent = `← ${Math.round(leftIn)} po · ${Math.round(rightIn)} po →`;
   dimsChip.hidden = false;
   const v = ghost.mesh.position.clone();
-  v.y += ghost.mesh.geometry.parameters.height / 2 + 0.12;
+  v.y = (ghost.chipY ?? v.y + ghost.mesh.geometry.parameters.height / 2) + 0.12;
   v.project(ctx.camera);
   const r = dimsChip.getBoundingClientRect();
   dimsChip.style.left = `${Math.round(((v.x + 1) / 2) * window.innerWidth - r.width / 2)}px`;
@@ -746,6 +805,7 @@ canvas.addEventListener('pointerdown', (e) => {
       timer: setTimeout(() => {
         pressHold = null;
         if (!selection || selection.mesh !== obj) { hidePopover(); selectModule(obj); }
+        ensureDetached();
         moveDrag = { x0: e.clientX, y0: e.clientY, started: true, freshSelect: true };
         ctx.controls.enabled = false;
         modbar.hidden = true;
@@ -760,6 +820,7 @@ canvas.addEventListener('pointerdown', (e) => {
     hidePopover();
     selectModule(modHit.object);
   }
+  ensureDetached(); // le vrai caisson doit être manipulable dès le premier mouvement
   // pendant le geste, le state ne bouge pas : le fantôme prévisualise tout
   moveDrag = { x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh };
   ctx.controls.enabled = false;
@@ -808,27 +869,28 @@ canvas.addEventListener('pointermove', (e) => {
     canvas.style.cursor = 'grabbing';
     modbar.hidden = true; // la barre laisse place au fantôme et aux cotes
   }
-  if (!ghost) ghost = makeGhost();
   const f = current.focus;
   const ud = selection.ud;
-  const toWorld = (along) => along - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
 
-  // électro : crans de 3 po + aimant aux extrémités du mur (le solveur
-  // revalidera au lâcher : fenêtres, dégagements…)
+  // électro : le VRAI appareil suit le doigt — crans de 3 po + aimant aux
+  // extrémités du mur (le solveur revalidera au lâcher : fenêtres, dégagements…)
   if (ud.fixture) {
+    if (!ghost) ghost = makeLiveGhost();
     const along = cursorAlong(ud.wall, e);
     if (along == null) return;
     const len = f.wallLens[ud.wall];
     const m2 = magnetize(along, ud.width, 0.08, len - 0.08);
-    ghost.mesh.position[ghost.axis] = toWorld(m2.c);
+    ghostPlace(m2.c);
     ghostTint(true);
-    ghost.edgeMat.color.setHex(m2.stuck ? 0xfff3da : GHOST_OK);
+    if (m2.stuck) ghost.mat.color.setHex(0xfff3da);
     ghost.drop = { kind: 'fixture', pos: m2.c };
     return;
   }
-  // fenêtre / porte : le fantôme se pose sur la position résolue (REQ-802) ;
+  // fenêtre / porte : boîte translucide sur la position résolue (REQ-802) ;
   // rouge quand aucune place n'est possible à cet endroit
   if (ud.opening) {
+    if (!ghost) ghost = makeGhost();
+    const toWorld = (along) => along - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
     const raw = fixtureDragPos(e);
     if (raw == null) return;
     const p = resolveOpeningPos(state, ud.wall, ud.width, raw, ud.opening);
@@ -837,7 +899,8 @@ canvas.addEventListener('pointermove', (e) => {
     ghost.drop = p != null ? { kind: 'opening', pos: p } : null;
     return;
   }
-  // module : snap continu dans les plages libres + cotes vers les voisins
+  // module : le VRAI caisson suit le doigt — snap continu + cotes vers les voisins
+  if (!ghost) ghost = makeLiveGhost();
   const wall = selection.key.split(':')[0];
   const along = cursorAlong(wall, e);
   if (along == null) return;
@@ -851,9 +914,9 @@ canvas.addEventListener('pointermove', (e) => {
   // un run sans aucun jeu (= sa propre place dans un mur plein) ne « tient »
   // le fantôme que si le curseur reste proche ; au-delà, on prévisualise l'échange
   if (best && (best.a1 - best.a0 - w > 0.04 || bd < 0.18)) {
-    ghost.mesh.position[ghost.axis] = toWorld(best.c);
+    ghostPlace(best.c);
     ghostTint(true);
-    ghost.edgeMat.color.setHex(best.stuck ? 0xfff3da : GHOST_OK); // contour vif quand collé
+    if (best.stuck) ghost.mat.color.setHex(0xfff3da); // empreinte vive quand collé
     const dimL = (best.c - w / 2 - best.a0) / IN, dimR = (best.a1 - best.c - w / 2) / IN;
     if (dimL + dimR >= 1) showDims(dimL, dimR);
     else dimsChip.hidden = true;
@@ -862,7 +925,7 @@ canvas.addEventListener('pointermove', (e) => {
   } else {
     // aucun espace libre (cuisine proposée pleine) : le lâcher fera un échange
     const len = wall === 'isl' ? f.a : (f.wallLens[wall] ?? f.a);
-    ghost.mesh.position[ghost.axis] = toWorld(Math.min(Math.max(along, w / 2), len - w / 2));
+    ghostPlace(Math.min(Math.max(along, w / 2), len - w / 2));
     ghostTint(true);
     dimsChip.hidden = true;
     ghost.drop = { kind: 'module-reorder', x: e.clientX, y: e.clientY };
@@ -877,12 +940,18 @@ function endModuleDrag(cancelled = false) {
   if (!moveDrag) return;
   const d = moveDrag;
   const drop = ghost ? ghost.drop : null;
+  // rien appliqué : le vrai caisson rentre à sa place et reprend son contour
+  if (ghost && ghost.live && (cancelled || !drop)) ghost.live.position.copy(ghost.liveOrig);
+  const hadLive = !!(ghost && ghost.live);
   killGhost();
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
   if (selection) modbar.hidden = false;
-  if (cancelled || !d.started || !drop || !selection) return;
+  if (cancelled || !d.started || !drop || !selection) {
+    if (hadLive && selection) drawOutline(selection.mesh);
+    return;
+  }
   justDropped = true;
   if (drop.kind === 'fixture') {
     setState({
