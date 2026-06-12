@@ -1885,10 +1885,19 @@ export function buildKitchen(state) {
           g.add(hit);
           editables.push(hit);
         }
-        // module sélectionné : hors fusion, déplaçable en direct pendant le drag
-        if (detachedSel && ((detachedSel.key === slot.gapKey && detachedSel.idx === slot.gapIndex)
-          || (detachedSel.fixture && { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' }[type] === detachedSel.fixture))) {
-          g.userData.detachedKeep = true;
+        // module sélectionné : hors fusion, déplaçable en direct pendant le
+        // drag. detachedSel.prefix détache TOUT le mur du même genre : les
+        // voisins (dragMate) s'écartent en direct pendant un réordonnancement
+        if (detachedSel) {
+          const exact = detachedSel.key === slot.gapKey && detachedSel.idx === slot.gapIndex;
+          const fix = detachedSel.fixture && { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' }[type] === detachedSel.fixture;
+          const mate = detachedSel.prefix != null && slot.gapKey != null && slot.gapIndex != null
+            && (slot.gapKey === detachedSel.prefix
+              || (slot.gapKey.startsWith(detachedSel.prefix) && /^\d+$/.test(slot.gapKey.slice(detachedSel.prefix.length))));
+          if (exact || fix || mate) {
+            g.userData.detachedKeep = true;
+            if (mate && !exact) g.userData.dragMate = { key: slot.gapKey, idx: slot.gapIndex };
+          }
         }
         // les électros aussi sont saisissables : glisser = déplacer (position
         // manuelle re-résolue par le solveur), corbeille = retirer
@@ -2246,8 +2255,14 @@ export function buildKitchen(state) {
         pg.position.copy(pl.pos);
         pg.rotation.y = pl.rotY;
         inner.add(pg);
-        if (detachedSel && detachedSel.key === gapKey && detachedSel.idx === piece.gapIndex) {
-          pg.userData.detachedKeep = true;
+        if (detachedSel) {
+          const exact = detachedSel.key === gapKey && detachedSel.idx === piece.gapIndex;
+          const mate = detachedSel.prefix != null && piece.gapIndex != null
+            && gapKey.startsWith(detachedSel.prefix) && /^\d+$/.test(gapKey.slice(detachedSel.prefix.length));
+          if (exact || mate) {
+            pg.userData.detachedKeep = true;
+            if (mate && !exact) pg.userData.dragMate = { key: gapKey, idx: piece.gapIndex };
+          }
         }
         if (piece.type !== 'filler') {
           const hit = new THREE.Mesh(
@@ -2334,7 +2349,12 @@ export function buildKitchen(state) {
       const g = buildBase(slot.w, type, islandMats, manifest, slot.widthIn, slot.hinge);
       g.position.set(cx, 0, islZ0 + BASE_D);
       g.rotation.y = Math.PI;
-      if (detachedSel && detachedSel.key === 'isl' && detachedSel.idx === i) g.userData.detachedKeep = true;
+      if (detachedSel && ((detachedSel.key === 'isl' && detachedSel.idx === i) || detachedSel.prefix === 'isl')) {
+        g.userData.detachedKeep = true;
+        if (detachedSel.prefix === 'isl' && !(detachedSel.key === 'isl' && detachedSel.idx === i)) {
+          g.userData.dragMate = { key: 'isl', idx: i };
+        }
+      }
       ig.add(g);
       if (type === 'evier') {
         placed.evier = { wall: 'isl', isl: true, x: center, z: islZ0 + 0.3, along: center, w: slot.w };

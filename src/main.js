@@ -106,6 +106,19 @@ ctx.setTick(() => {
     if (f2 >= 1) { settle.obj.scale.setScalar(1); settle = null; }
     else settle.obj.scale.setScalar(1 + 0.04 * (1 - f2) * (1 - f2));
   }
+  // « soulever – s'écarter – poser » : le caisson saisi monte (~16 cm, on le
+  // PORTE au-dessus de la cuisine, il ne traverse plus rien) et les voisins
+  // glissent en douceur vers leur position prévisualisée
+  if (ghost && ghost.live) {
+    const wantY = ghost.liveOrig.y + (ghost.liftStart ? LIFT_H : 0);
+    ghost.live.position.y += (wantY - ghost.live.position.y) * 0.22;
+  }
+  if (ghost && ghost.mates) {
+    for (const m of ghost.mates) {
+      const want = m.orig[ghost.axis] + m.target;
+      m.grp.position[ghost.axis] += (want - m.grp.position[ghost.axis]) * 0.22;
+    }
+  }
 });
 
 // un asset GLB qui finit de charger remplace son repli procédural au
@@ -326,9 +339,11 @@ function ensureDetached() {
     : `${selection.key}#${selection.idx}`;
   if (k === detachedKey) return;
   detachedKey = k;
+  // prefix : tout le mur du même genre reste en groupes individuels — les
+  // voisins peuvent s'écarter en direct pendant un réordonnancement
   setDetachedModule(!k ? null
     : selection.ud.fixture ? { fixture: selection.ud.fixture }
-    : { key: selection.key, idx: selection.idx });
+    : { key: selection.key, idx: selection.idx, prefix: gapPrefix(selection.key) });
   rebuild();
 }
 
@@ -382,12 +397,25 @@ function modsOfGap(key) {
 // vrai si l'ordre des index du gap décroît le long de l'axe (îlot : modules
 // posés en miroir, l'index 0 est à droite dans le monde)
 const tmpA = new THREE.Vector3();
+
+// coordonnée de REPOS d'un module le long de l'axe : pendant un drag, les
+// voisins prévisualisés sont décalés (animation) — les calculs de cible
+// doivent ignorer ces décalages, sinon la cible se calcule sur elle-même
+function restAlong(wall, m, f) {
+  let a = alongAxis(wall, m.getWorldPosition(tmpA), f);
+  if (ghost && ghost.mateByGrp) {
+    for (let p = m.parent; p; p = p.parent) {
+      const mt = ghost.mateByGrp.get(p);
+      if (mt) { a -= p.position[ghost.axis] - mt.orig[ghost.axis]; break; }
+    }
+  }
+  return a;
+}
+
 function gapReversed(key, wall, f) {
   const mods = modsOfGap(key);
   if (mods.length < 2) return false;
-  const a0 = alongAxis(wall, mods[0].getWorldPosition(tmpA).clone(), f);
-  const a1 = alongAxis(wall, mods[mods.length - 1].getWorldPosition(tmpA).clone(), f);
-  return a0 > a1;
+  return restAlong(wall, mods[0], f) > restAlong(wall, mods[mods.length - 1], f);
 }
 
 function applySelectionMove(dstKey, dstIdx) {
@@ -585,6 +613,7 @@ dimsChip.hidden = true;
 document.getElementById('app').appendChild(dimsChip);
 
 const GHOST_OK = 0xd4ab6a, GHOST_BAD = 0xc0392b;
+const LIFT_H = 0.16; // hauteur de portage : saisir = soulever, on ne traverse rien
 function makeBoxGhost(w, h, d) {
   const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.28, depthWrite: false });
@@ -622,10 +651,23 @@ function makeLiveGhost() {
   const grp = src.parent;
   const live = grp && grp.userData.detachedKeep ? grp : null;
   if (live) clearOutline(); // le caisson en mouvement EST le feedback
+  // voisins du même mur/genre (détachés via prefix) : pendant un
+  // réordonnancement ils glissent en douceur vers leur position prévisualisée
+  const mates = [];
+  const mateByGrp = new Map();
+  ctx.scene.traverse((o) => {
+    if (!o.userData.dragMate || o === live) return;
+    const m = { grp: o, orig: o.position.clone(), key: o.userData.dragMate.key, idx: o.userData.dragMate.idx, target: 0 };
+    mates.push(m);
+    mateByGrp.set(o, m);
+  });
+  if (live) mateByGrp.set(live, { orig: live.position.clone() });
   return {
     mesh: foot, mat, edgeMat: null, axis, drop: null,
     live, liveOrig: live ? live.position.clone() : null,
     c0: wp[axis], chipY: wp.y + p.height / 2,
+    mates, mateByGrp,
+    liftStart: performance.now(), // saisir = soulever (~16 cm), on porte le caisson
   };
 }
 
@@ -709,6 +751,84 @@ function moduleFreeRuns() {
   return runs.filter((r) => r.a1 - r.a0 >= w - 0.001);
 }
 
+// plages ABSOLUES où l'électro saisi peut se poser : les vides des gaps du
+// bas de son mur + sa place actuelle — il ne traverse plus jamais un caisson
+function fixtureFreeRuns() {
+  const ud = selection.ud;
+  const w = ud.width;
+  const pre = ud.wall === 'isl' ? 'isl' : `${ud.wall}:g`;
+  const spans = [[ud.along - w / 2, ud.along + w / 2]];
+  for (const [k, comp] of Object.entries(current.gapComps || {})) {
+    if (!(k === pre || (k.startsWith(pre) && /^\d+$/.test(k.slice(pre.length))))) continue;
+    const rev = k === 'isl';
+    const startM = k === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(k.slice(pre.length), 10) * IN;
+    const totalM = comp.totalIn * IN;
+    let cum = 0;
+    comp.widths.forEach((wi, i) => {
+      const wm = wi * IN;
+      if (comp.types[i] === 'vide') {
+        const a0 = rev ? startM + totalM - cum - wm : startM + cum;
+        spans.push([a0, a0 + wm]);
+      }
+      cum += wm;
+    });
+  }
+  // fusionner les plages contiguës puis garder celles où l'électro entre
+  spans.sort((p, q) => p[0] - q[0]);
+  const merged = [];
+  for (const s of spans) {
+    const last = merged[merged.length - 1];
+    if (last && s[0] <= last[1] + 0.002) last[1] = Math.max(last[1], s[1]);
+    else merged.push([...s]);
+  }
+  return merged.filter((s) => s[1] - s[0] >= w - 0.001);
+}
+
+// prévisualisation d'un réordonnancement (mur plein) : empile les pièces du
+// ou des gaps concernés comme le ferait le lâcher, pose les cibles des
+// voisins (delta animé dans la boucle de rendu) et retourne le centre où le
+// caisson porté se poserait — il ne glisse plus jamais À TRAVERS les voisins
+function reorderPreview(t) {
+  for (const m of ghost.mates) m.target = 0;
+  const w = selection.ud.width;
+  const stack = (k, removeIdx, insertIdx) => {
+    const comp = current.gapComps[k];
+    if (!comp) return null;
+    const rev = k === 'isl';
+    const pre = gapPrefix(k);
+    const startM = k === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(k.slice(pre.length), 10) * IN;
+    const totalM = comp.totalIn * IN;
+    const seq = comp.widths.map((wi, i) => ({ i, w: wi * IN }));
+    if (removeIdx != null) seq.splice(removeIdx, 1);
+    if (insertIdx != null) seq.splice(Math.max(0, Math.min(insertIdx, seq.length)), 0, { i: -1, w });
+    // centres empilés depuis le début du gap (l'îlot empile en miroir)
+    let cum = 0, dragC = null;
+    const center = new Map();
+    for (const p of seq) {
+      const a0 = rev ? startM + totalM - cum - p.w : startM + cum;
+      if (p.i === -1) dragC = a0 + p.w / 2; else center.set(p.i, a0 + p.w / 2);
+      cum += p.w;
+    }
+    // centres de repos → deltas des voisins
+    cum = 0;
+    comp.widths.forEach((wi, i) => {
+      const wm = wi * IN;
+      const a0 = rev ? startM + totalM - cum - wm : startM + cum;
+      const c = center.get(i);
+      if (c != null) {
+        for (const m of ghost.mates) {
+          if (m.key === k && m.idx === i) { m.target = c - (a0 + wm / 2); break; }
+        }
+      }
+      cum += wm;
+    });
+    return dragC;
+  };
+  if (t.key === selection.key) return stack(t.key, selection.idx, t.idx);
+  stack(selection.key, selection.idx, null); // le gap d'origine se referme
+  return stack(t.key, null, t.idx);          // le gap visé ouvre le trou
+}
+
 // ————— glissement du caisson sélectionné le long de son mur —————
 // position cible (gap + index) sous le pointeur, sur le mur du module sélectionné.
 // Tout se calcule depuis les positions MONDE réelles des modules (l'îlot pose
@@ -733,7 +853,7 @@ function dragTarget(e) {
   let gKey = null, bd = Infinity;
   for (const m of current.editables) {
     if (gapPrefix(m.userData.gapKey) !== pre) continue;
-    const d = Math.abs(alongAxis(wall, m.getWorldPosition(tmpA), f) - alongM);
+    const d = Math.abs(restAlong(wall, m, f) - alongM);
     if (d < bd) { bd = d; gKey = m.userData.gapKey; }
   }
   if (!gKey) return null;
@@ -742,7 +862,7 @@ function dragTarget(e) {
   const others = modsOfGap(gKey).filter((m) => m !== selection.mesh);
   let p = 0;
   for (const m of others) {
-    if (alongM > alongAxis(wall, m.getWorldPosition(tmpA), f)) p++;
+    if (alongM > restAlong(wall, m, f)) p++;
   }
   const rev = gapReversed(gKey, wall, f);
   const idx = rev ? others.length - p : p;
@@ -856,18 +976,25 @@ canvas.addEventListener('pointermove', (e) => {
   const f = current.focus;
   const ud = selection.ud;
 
-  // électro : le VRAI appareil suit le doigt — crans de 3 po + aimant aux
-  // extrémités du mur (le solveur revalidera au lâcher : fenêtres, dégagements…)
+  // électro : le VRAI appareil suit le doigt, mais UNIQUEMENT dans les plages
+  // libres (vides + sa place) — il saute par-dessus les caissons au lieu de
+  // les traverser (le solveur revalidera au lâcher : fenêtres, dégagements…)
   if (ud.fixture) {
     if (!ghost) ghost = makeLiveGhost();
     const along = cursorAlong(ud.wall, e);
     if (along == null) return;
-    const len = f.wallLens[ud.wall];
-    const m2 = magnetize(along, ud.width, 0.08, len - 0.08);
-    ghostPlace(m2.c);
+    if (!ghost.fixRuns) ghost.fixRuns = fixtureFreeRuns();
+    let bestF = null, bdF = Infinity;
+    for (const r of ghost.fixRuns) {
+      const m2 = magnetize(along, ud.width, r[0], r[1]);
+      const d2 = Math.abs(m2.c - along);
+      if (d2 < bdF) { bdF = d2; bestF = m2; }
+    }
+    if (!bestF) return; // (sa propre place est toujours une plage : ne survient pas)
+    ghostPlace(bestF.c);
     ghostTint(true);
-    if (m2.stuck) ghost.mat.color.setHex(0xfff3da);
-    ghost.drop = { kind: 'fixture', pos: m2.c };
+    if (bestF.stuck) ghost.mat.color.setHex(0xfff3da);
+    ghost.drop = { kind: 'fixture', pos: bestF.c };
     return;
   }
   // fenêtre / porte : boîte translucide sur la position résolue (REQ-802) ;
@@ -898,6 +1025,7 @@ canvas.addEventListener('pointermove', (e) => {
   // un run sans aucun jeu (= sa propre place dans un mur plein) ne « tient »
   // le fantôme que si le curseur reste proche ; au-delà, on prévisualise l'échange
   if (best && (best.a1 - best.a0 - w > 0.04 || bd < 0.18)) {
+    for (const m of ghost.mates) m.target = 0; // pose libre : les voisins ne bougent pas
     ghostPlace(best.c);
     ghostTint(true);
     if (best.stuck) ghost.mat.color.setHex(0xfff3da); // empreinte vive quand collé
@@ -907,12 +1035,19 @@ canvas.addEventListener('pointermove', (e) => {
     const offIn = best.rev ? (best.startM + best.totalM - best.c) / IN : (best.c - best.startM) / IN;
     ghost.drop = { kind: 'module', gapKey: best.k, offIn };
   } else {
-    // aucun espace libre (cuisine proposée pleine) : le lâcher fera un échange
-    const len = wall === 'isl' ? f.a : (f.wallLens[wall] ?? f.a);
-    ghostPlace(Math.min(Math.max(along, w / 2), len - w / 2));
-    ghostTint(true);
-    dimsChip.hidden = true;
-    ghost.drop = { kind: 'module-reorder', x: e.clientX, y: e.clientY };
+    // mur plein : réordonnancement VIVANT — le caisson porté se pose sur le
+    // créneau visé et les voisins glissent pour ouvrir le trou (zéro
+    // interpénétration ; hors cible, on garde la dernière pose valide)
+    const t = dragTarget(e);
+    const c = t ? reorderPreview(t) : null;
+    if (c != null) {
+      ghostPlace(c);
+      ghostTint(true);
+      dimsChip.hidden = true;
+      ghost.drop = (t.key !== selection.key || t.idx !== selection.idx)
+        ? { kind: 'module-reorder', target: t }
+        : null; // sa propre place : lâcher = rien ne bouge
+    }
   }
 }, { capture: true });
 
@@ -924,26 +1059,34 @@ function endModuleDrag(cancelled = false) {
   if (!moveDrag) return;
   const d = moveDrag;
   const drop = ghost ? ghost.drop : null;
-  // rien appliqué : le vrai caisson rentre à sa place et reprend son contour
-  if (ghost && ghost.live && (cancelled || !drop)) ghost.live.position.copy(ghost.liveOrig);
+  // rien appliqué : le vrai caisson redescend à sa place et les voisins
+  // prévisualisés reglissent à la leur (le state n'a jamais bougé)
   const hadLive = !!(ghost && ghost.live);
+  const restore = ghost ? ((live, liveOrig, mates, axis) => () => {
+    if (live) live.position.copy(liveOrig);
+    if (mates) for (const m of mates) m.grp.position[axis] = m.orig[axis];
+  })(ghost.live, ghost.liveOrig, ghost.mates, ghost.axis) : () => {};
   killGhost();
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
   if (cancelled || !d.started || !drop || !selection) {
+    restore();
     if (hadLive && selection) drawOutline(selection.mesh);
     return;
   }
   justDropped = true;
+  let applied = false;
   if (drop.kind === 'fixture') {
     setState({
       constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos: drop.pos } },
       gapPlans: freezeWallPlans(selection.ud.wall),
     });
     pendingSettle = true;
+    applied = true;
   } else if (drop.kind === 'opening') {
     setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === selection.ud.opening ? { ...o, pos: drop.pos } : o)) } });
+    applied = true;
   } else if (drop.kind === 'module') {
     const r = placeModuleAt(current.gapComps, selection.key, selection.idx, drop.gapKey, drop.offIn);
     if (r) {
@@ -951,12 +1094,18 @@ function endModuleDrag(cancelled = false) {
       selection.idx = r.idx;
       setState({ gapPlans: r.plans });
       pendingSettle = true;
+      applied = true;
     }
   } else if (drop.kind === 'module-reorder') {
-    const t = dragTarget({ clientX: drop.x, clientY: drop.y });
+    const t = drop.target;
     if (t && (t.key !== selection.key || t.idx !== selection.idx) && applySelectionMove(t.key, t.idx)) {
       pendingSettle = true;
+      applied = true;
     }
+  }
+  if (!applied) {
+    restore();
+    if (hadLive && selection) drawOutline(selection.mesh);
   }
 }
 let pendingSettle = false;
