@@ -110,7 +110,7 @@ ctx.setTick(() => {
   // PORTE au-dessus de la cuisine, il ne traverse plus rien) et les voisins
   // glissent en douceur vers leur position prévisualisée
   if (ghost && ghost.live) {
-    const wantY = ghost.liveOrig.y + (ghost.liftStart ? LIFT_H : 0);
+    const wantY = ghost.liveOrig.y + (ghost.liftStart ? ghost.liftH : 0);
     ghost.live.position.y += (wantY - ghost.live.position.y) * 0.22;
   }
   if (ghost && ghost.mates) {
@@ -542,10 +542,30 @@ function nudgeOpening(dir) {
   return true;
 }
 
+// ◀ ▶ : le caisson file COMPLÈTEMENT au bout de l'espace libre de son côté ;
+// déjà collé à un voisin → échange avec lui. Électros/ouvertures : crans de 3 po.
 function actStep(dir, btn) {
   if (!selection) return;
   if (selection.ud.fixture) return nudgeFixture(dir);
   if (selection.ud.opening) return void (nudgeOpening(dir) || flashDeny(btn));
+  const f = current.focus;
+  const wall = selection.key.split(':')[0];
+  const w = selection.ud.width;
+  const c = restAlong(wall, selection.mesh, f);
+  const run = moduleFreeRuns().find((r) => c >= r.a0 - 0.01 && c <= r.a1 + 0.01);
+  const flush = run ? (dir < 0 ? run.a0 + w / 2 : run.a1 - w / 2) : null;
+  if (flush != null && Math.abs(flush - c) > 0.005) {
+    const offIn = run.rev ? (run.startM + run.totalM - flush) / IN : (flush - run.startM) / IN;
+    const r = placeModuleAt(current.gapComps, selection.key, selection.idx, run.k, offIn);
+    if (r) {
+      selection.key = run.k;
+      selection.idx = r.idx;
+      setState({ gapPlans: r.plans });
+      pendingSettle = true;
+      return;
+    }
+  }
+  // aucun jeu de ce côté : échange avec le voisin adjacent
   const t = arrowTarget(dir);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(btn);
 }
@@ -613,7 +633,6 @@ dimsChip.hidden = true;
 document.getElementById('app').appendChild(dimsChip);
 
 const GHOST_OK = 0xd4ab6a, GHOST_BAD = 0xc0392b;
-const LIFT_H = 0.16; // hauteur de portage : saisir = soulever, on ne traverse rien
 function makeBoxGhost(w, h, d) {
   const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.28, depthWrite: false });
@@ -667,7 +686,12 @@ function makeLiveGhost() {
     live, liveOrig: live ? live.position.clone() : null,
     c0: wp[axis], chipY: wp.y + p.height / 2,
     mates, mateByGrp,
-    liftStart: performance.now(), // saisir = soulever (~16 cm), on porte le caisson
+    liftStart: performance.now(), // saisir = soulever : on PORTE l'objet
+    // hauteur de portage : un bas passe AU-DESSUS du comptoir (sans toucher
+    // les murales), un grand corps à peine (plafond), une murale modérément
+    liftH: selection.ud.upper ? 0.16
+      : (selection.ud.fixture === 'fridge' || ['frigo', 'garde-manger', 'four-mural'].includes(selection.ud.current)) ? 0.06
+      : 0.36,
   };
 }
 

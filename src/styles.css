@@ -663,6 +663,10 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   .popover-opts button { padding: 12px 13px; }
   .pop-chips .chip { padding: 10px 14px; font-size: 13px; }
 
+  /* drawer (réglages complets) : les actions vivent dans la pastille près de
+     l'objet — pas de doublon ◀ ▶ 🗑 ici, le drawer ne montre que les options */
+  .popover:not(.compact) #ctxRow { display: none; }
+
   /* ——— carte contextuelle COMPACTE : pastille d'icônes près de l'objet ———
      (◀ ▶ ⚙ 🗑 ✕, sans libellés ni titre) — position posée par placePopover
      via --cx-l/--cx-t (les règles drawer ci-dessus étant en !important) */
