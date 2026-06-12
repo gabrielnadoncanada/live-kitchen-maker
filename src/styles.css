@@ -434,6 +434,24 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   #modbar button { padding: 9px 12px; }
 }
 
+/* annuler / rétablir : à gauche du sélecteur de vue */
+#histBtns {
+  position: fixed; top: 16px; left: 50%; z-index: 30;
+  transform: translateX(calc(-50% - 152px));
+  display: flex; gap: 2px; padding: 4px;
+  background: var(--paper); border-radius: 999px;
+  box-shadow: var(--shadow-lg); border: 1px solid rgba(255,255,255,.7);
+}
+#histBtns button {
+  width: 34px; height: 34px; border-radius: 999px;
+  font-size: 16px; line-height: 1; transition: background .15s, opacity .15s;
+}
+#histBtns button:hover:not(:disabled) { background: rgba(var(--brass-rgb),.14); }
+#histBtns button:disabled { opacity: .28; cursor: default; }
+@media (max-width: 860px) {
+  #histBtns { transform: translateX(calc(-50% - 128px)); top: 12px; }
+}
+
 /* palette d'ajout : une rangée de vignettes à glisser dans la scène */
 #palette {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 38;

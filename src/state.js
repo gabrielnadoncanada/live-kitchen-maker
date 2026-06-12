@@ -48,10 +48,49 @@ export const state = {
   gapPlans: {},
 };
 
+// ——— historique (annuler / rétablir) ———
+// Instantané AVANT chaque changement ; les rafales (drag en vue plan, curseurs)
+// se groupent en une seule entrée — un geste = un undo.
+const history = { past: [], future: [], lastPush: 0 };
+
 export function setState(patch, meta = {}) {
+  if (!meta.undo) {
+    const now = Date.now();
+    if (now - history.lastPush > 350) {
+      history.past.push(JSON.stringify(state));
+      if (history.past.length > 100) history.past.shift();
+      history.future.length = 0;
+    }
+    history.lastPush = now;
+  }
   deepMerge(state, patch);
   for (const fn of listeners) fn(state, meta);
 }
+
+function restore(snap) {
+  // remplacement EN PLACE : tous les modules référencent cet objet
+  for (const k of Object.keys(state)) delete state[k];
+  Object.assign(state, JSON.parse(snap));
+  history.lastPush = 0; // le prochain changement repart sur une entrée neuve
+  for (const fn of listeners) fn(state, { undo: true });
+}
+
+export function undo() {
+  if (!history.past.length) return false;
+  history.future.push(JSON.stringify(state));
+  restore(history.past.pop());
+  return true;
+}
+
+export function redo() {
+  if (!history.future.length) return false;
+  history.past.push(JSON.stringify(state));
+  restore(history.future.pop());
+  return true;
+}
+
+export const canUndo = () => history.past.length > 0;
+export const canRedo = () => history.future.length > 0;
 
 export function subscribe(fn) {
   listeners.add(fn);

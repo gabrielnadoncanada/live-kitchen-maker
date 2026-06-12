@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createScene } from './scene.js';
 import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
-import { state, setState, subscribe } from './state.js';
+import { state, setState, subscribe, undo, redo, canUndo, canRedo } from './state.js';
 import { computeQuote } from './pricing.js';
 import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, placeModuleAt, insertModuleAt, moduleTypeLabel } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
@@ -916,6 +916,37 @@ document.addEventListener('keydown', (e) => {
   if (palDrag) cancelPaletteDrag();
   else if (moveDrag) endModuleDrag(true);
   else if (selection) { deselectModule(); hidePopover(); }
+});
+
+// ————— annuler / rétablir : Ctrl+Z, Ctrl+Shift+Z (ou Ctrl+Y) + boutons ↶ ↷ —————
+const histBtns = document.createElement('div');
+histBtns.id = 'histBtns';
+histBtns.innerHTML = `
+  <button class="h-undo" title="Annuler (Ctrl+Z)">↶</button>
+  <button class="h-redo" title="Rétablir (Ctrl+Shift+Z)">↷</button>`;
+document.getElementById('app').appendChild(histBtns);
+
+function doHistory(fn) {
+  if (moveDrag || palDrag) return; // jamais au milieu d'un geste
+  deselectModule();
+  hidePopover();
+  fn();
+}
+histBtns.querySelector('.h-undo').addEventListener('click', () => doHistory(undo));
+histBtns.querySelector('.h-redo').addEventListener('click', () => doHistory(redo));
+const syncHist = () => {
+  histBtns.querySelector('.h-undo').disabled = !canUndo();
+  histBtns.querySelector('.h-redo').disabled = !canRedo();
+};
+subscribe(syncHist);
+syncHist();
+
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.target instanceof Element && e.target.matches('input, textarea, select')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); doHistory(undo); }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); doHistory(redo); }
 });
 
 // ————— palette d'ajout : glisser une vignette directement dans la scène —————
