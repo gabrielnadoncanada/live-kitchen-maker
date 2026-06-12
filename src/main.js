@@ -432,6 +432,11 @@ function applySelectionMove(dstKey, dstIdx) {
   return true;
 }
 
+// « gauche » à l'écran ≠ « moins » sur l'axe du mur : regardés depuis
+// l'intérieur de la pièce, les murs front et left sont vus en MIROIR de
+// leur axe along — sans cette correction, ◀ part du mauvais côté sur eux
+const visDir = (wall, dir) => dir * ((wall === 'front' || wall === 'left') ? -1 : 1);
+
 // cible des flèches ◀ ▶ : la position voisine, en passant au gap suivant du
 // même mur quand on atteint un bord. dir est VISUEL (◀ = vers la gauche) :
 // sur un gap inversé (îlot), l'index bouge en sens contraire.
@@ -439,7 +444,8 @@ function arrowTarget(dir) {
   const comp = current.gapComps[selection.key];
   if (!comp) return null;
   const wall = selection.key.split(':')[0];
-  const d = gapReversed(selection.key, wall, current.focus) ? -dir : dir;
+  const vd = visDir(wall, dir);
+  const d = gapReversed(selection.key, wall, current.focus) ? -vd : vd;
   const ni = selection.idx + d;
   if (ni >= 0 && ni < comp.widths.length) return { key: selection.key, idx: ni };
   const gaps = gapsLike(selection.key);
@@ -534,17 +540,33 @@ function freezeWallPlans(wall) {
 function nudgeFixture(dir) {
   const ud = selection.ud;
   const len = current.focus.wallLens[ud.wall];
-  const pos = Math.min(Math.max(ud.along + dir * 0.075, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
+  const pos = Math.min(Math.max(ud.along + visDir(ud.wall, dir) * 0.075, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
   setState({ constraints: { [ud.fixture]: { auto: false, wall: ud.wall, pos } } });
 }
 
 // décaler une fenêtre/porte de 3 po (anti-chevauchement REQ-802 respecté)
 function nudgeOpening(dir) {
   const ud = selection.ud;
-  const p = resolveOpeningPos(state, ud.wall, ud.width, ud.along + dir * 0.075, ud.opening);
+  const p = resolveOpeningPos(state, ud.wall, ud.width, ud.along + visDir(ud.wall, dir) * 0.075, ud.opening);
   if (p == null) return false;
   setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === ud.opening ? { ...o, pos: p } : o)) } });
   return true;
+}
+
+// emprise d'une pièce dans le même repère que moduleFreeRuns (coordonnées du
+// PLAN, pas du monde : les fillers décalent les positions monde de ~1-2 cm)
+function pieceSpan(key, idx) {
+  const comp = current.gapComps[key];
+  if (!comp) return null;
+  const pre = gapPrefix(key);
+  const rev = key === 'isl';
+  const startM = key === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(key.slice(pre.length), 10) * IN;
+  const totalM = comp.totalIn * IN;
+  let cum = 0;
+  for (let i = 0; i < idx; i++) cum += comp.widths[i] * IN;
+  const wm = comp.widths[idx] * IN;
+  const a0 = rev ? startM + totalM - cum - wm : startM + cum;
+  return { a0, a1: a0 + wm };
 }
 
 // ◀ ▶ : le caisson file COMPLÈTEMENT au bout de l'espace libre de son côté ;
@@ -553,21 +575,26 @@ function actStep(dir, btn) {
   if (!selection) return;
   if (selection.ud.fixture) return nudgeFixture(dir);
   if (selection.ud.opening) return void (nudgeOpening(dir) || flashDeny(btn));
-  const f = current.focus;
   const wall = selection.key.split(':')[0];
   const w = selection.ud.width;
-  const c = restAlong(wall, selection.mesh, f);
-  const run = moduleFreeRuns().find((r) => c >= r.a0 - 0.01 && c <= r.a1 + 0.01);
-  const flush = run ? (dir < 0 ? run.a0 + w / 2 : run.a1 - w / 2) : null;
-  if (flush != null && Math.abs(flush - c) > 0.005) {
-    const offIn = run.rev ? (run.startM + run.totalM - flush) / IN : (flush - run.startM) / IN;
-    const r = placeModuleAt(current.gapComps, selection.key, selection.idx, run.k, offIn);
-    if (r) {
-      selection.key = run.k;
-      selection.idx = r.idx;
-      setState({ gapPlans: r.plans });
-      pendingSettle = true;
-      return;
+  const vd = visDir(wall, dir);
+  const span = pieceSpan(selection.key, selection.idx);
+  const run = span
+    ? moduleFreeRuns().find((r) => r.k === selection.key && span.a0 >= r.a0 - 0.01 && span.a1 <= r.a1 + 0.01)
+    : null;
+  if (run) {
+    const slack = vd < 0 ? span.a0 - run.a0 : run.a1 - span.a1;
+    if (slack > 0.01) {
+      const flush = vd < 0 ? run.a0 + w / 2 : run.a1 - w / 2;
+      const offIn = run.rev ? (run.startM + run.totalM - flush) / IN : (flush - run.startM) / IN;
+      const r = placeModuleAt(current.gapComps, selection.key, selection.idx, run.k, offIn);
+      if (r) {
+        selection.key = run.k;
+        selection.idx = r.idx;
+        setState({ gapPlans: r.plans });
+        pendingSettle = true;
+        return;
+      }
     }
   }
   // aucun jeu de ce côté : échange avec le voisin adjacent
