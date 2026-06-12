@@ -858,6 +858,45 @@ export function placeModuleAt(comps, srcKey, srcIdx, dstKey, offIn) {
   };
 }
 
+// Ajout depuis la palette (glisser-déposer) : insère un caisson de type t et
+// largeur wIn (po) centré sur offIn (po depuis le début du gap) dans une plage
+// vide. Même règles que le déplacement : snap < 3 po contre les voisins,
+// jamais de lamelle. Retourne { plans, idx } ou null si aucune place.
+export function insertModuleAt(comps, gapKey, offIn, type, wIn) {
+  const comp = comps[gapKey];
+  if (!comp) return null;
+  const aligned = comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null);
+  let { widths: dw, types: dt, hinges: dh } = normalizePlan([...comp.widths], [...comp.types], aligned);
+  const starts = [];
+  let cum = 0;
+  const cands = [];
+  for (let i = 0; i < dw.length; i++) {
+    starts.push(cum);
+    if (dt[i] === 'vide' && dw[i] + 0.05 >= wIn) cands.push({ i, lo: cum + wIn / 2, hi: cum + dw[i] - wIn / 2 });
+    cum += dw[i];
+  }
+  if (!cands.length) return null;
+  let best = null, bd = Infinity;
+  for (const c of cands) {
+    const x = Math.min(Math.max(offIn, c.lo), c.hi);
+    const d = Math.abs(x - offIn);
+    if (d < bd) { bd = d; best = { ...c, x }; }
+  }
+  let leftW = best.x - wIn / 2 - starts[best.i];
+  let rightW = dw[best.i] - leftW - wIn;
+  if (leftW < 3) { rightW += leftW; leftW = 0; }
+  if (rightW < 3) { leftW += rightW; rightW = 0; }
+  if (leftW > 0 && leftW < 3) { rightW += leftW; leftW = 0; }
+  const ins = [];
+  if (leftW > 0.05) ins.push([leftW, 'vide', null]);
+  ins.push([wIn, type, null]);
+  if (rightW > 0.05) ins.push([rightW, 'vide', null]);
+  dw.splice(best.i, 1, ...ins.map((p) => p[0]));
+  dt.splice(best.i, 1, ...ins.map((p) => p[1]));
+  dh.splice(best.i, 1, ...ins.map((p) => p[2]));
+  return { plans: { [gapKey]: { widths: dw, types: dt, hinges: dh } }, idx: best.i + (leftW > 0.05 ? 1 : 0) };
+}
+
 export function showModuleEditor(x, y, data, comp) {
   const pop = document.getElementById('popover');
   const opts = document.getElementById('popoverOpts');

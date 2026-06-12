@@ -5,7 +5,7 @@ import { buildKitchen, disposeKitchen } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, placeModuleAt, moduleTypeLabel } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, placeModuleAt, insertModuleAt, moduleTypeLabel } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
 import { IN } from './skuCatalog.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
@@ -59,6 +59,16 @@ function rebuild() {
           : findEditable(selection.key, selection.idx);
     if (m) attachSelection(m);
     else deselectModule();
+  }
+  // sélection du nouvel objet posé depuis la palette
+  if (pendingSelect) {
+    const m = pendingSelect.fixture
+      ? current.editables.find((e2) => e2.userData.fixture === pendingSelect.fixture)
+      : pendingSelect.opening
+        ? current.editables.find((e2) => e2.userData.opening === pendingSelect.opening)
+        : findEditable(pendingSelect.key, pendingSelect.idx);
+    if (m) attachSelection(m);
+    pendingSelect = null;
   }
   // micro-animation d'installation après un drop (petit pop d'échelle)
   if (pendingSettle && selection && selection.mesh.parent && !selection.ud.opening) {
@@ -186,6 +196,7 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
   document.querySelectorAll('#viewBtns button').forEach((b) => b.classList.toggle('active', b === btn));
   const view = btn.dataset.view;
   deselectModule(); // la sélection de module n'a de sens qu'en vue 3D
+  palette.style.display = view === 'plan' ? 'none' : '';
   planEd.setMode(view);
   // coachmark unique du plan (remplace l'ancien hint permanent)
   if (view === 'plan' && !sessionStorage.getItem('coach-plan')) {
@@ -553,19 +564,24 @@ dimsChip.hidden = true;
 document.getElementById('app').appendChild(dimsChip);
 
 const GHOST_OK = 0xd4ab6a, GHOST_BAD = 0xc0392b;
-function makeGhost() {
-  const src = selection.mesh;
-  const p = src.geometry.parameters;
-  const geo = new THREE.BoxGeometry(p.width, p.height, p.depth);
+function makeBoxGhost(w, h, d) {
+  const geo = new THREE.BoxGeometry(w, h, d);
   const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.28, depthWrite: false });
   const mesh = new THREE.Mesh(geo, mat);
   const edgeMat = new THREE.LineBasicMaterial({ color: GHOST_OK });
   mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
-  src.getWorldPosition(mesh.position);
-  src.getWorldQuaternion(mesh.quaternion);
   ctx.scene.add(mesh);
+  return { mesh, mat, edgeMat, axis: 'x', drop: null };
+}
+function makeGhost() {
+  const src = selection.mesh;
+  const p = src.geometry.parameters;
+  const g = makeBoxGhost(p.width, p.height, p.depth);
+  src.getWorldPosition(g.mesh.position);
+  src.getWorldQuaternion(g.mesh.quaternion);
   const wall = selection.ud.wall || (selection.key || '').split(':')[0];
-  return { mesh, mat, edgeMat, axis: (wall === 'left' || wall === 'right') ? 'z' : 'x', drop: null };
+  g.axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
+  return g;
 }
 
 function killGhost() {
@@ -840,8 +856,209 @@ canvas.addEventListener('pointerup', () => endModuleDrag(), { capture: true });
 canvas.addEventListener('pointercancel', () => endModuleDrag(true), { capture: true });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (moveDrag) endModuleDrag(true);
+  if (palDrag) cancelPaletteDrag();
+  else if (moveDrag) endModuleDrag(true);
   else if (selection) { deselectModule(); hidePopover(); }
+});
+
+// ————— palette d'ajout : glisser une vignette directement dans la scène —————
+// Le même verbe que tout le reste : GLISSER. Le fantôme apparaît dès que le
+// curseur survole la scène, se snape dans les espaces valides, et le lâcher pose.
+const PALETTE_ITEMS = [
+  { kind: 'module', type: 'tiroirs', wIn: 24, ico: '☰', label: 'Tiroirs' },
+  { kind: 'module', type: 'portes', wIn: 24, ico: '▢▢', label: 'Portes' },
+  { kind: 'module', type: 'ouvert', wIn: 24, ico: '▤', label: 'Niche' },
+  { kind: 'module', type: 'portes', upper: true, wIn: 27, ico: '⬒', label: 'Murale' },
+  { kind: 'fixture', fixture: 'water', wM: 0.9, h: 0.87, d: 0.6, ico: '💧', label: 'Évier', appl: { sink: true } },
+  { kind: 'fixture', fixture: 'stove', wM: 0.77, h: 0.9, d: 0.65, ico: '🍳', label: 'Cuisinière', appl: { range: true, hood: true } },
+  { kind: 'fixture', fixture: 'fridge', wM: 0.93, h: 2.25, d: 0.7, ico: '🧊', label: 'Frigo', appl: { fridge: true } },
+  { kind: 'fixture', fixture: 'dw', wM: 0.61, h: 0.87, d: 0.6, ico: '🍽', label: 'Lave-vaisselle', appl: { dw: true } },
+  { kind: 'opening', type: 'fenetre', wM: 1.25, y0: 1.52, y1: 2.2, max: 3, ico: '🪟', label: 'Fenêtre' },
+  { kind: 'opening', type: 'porte', wM: 0.85, y0: 0, y1: 2.05, max: 2, ico: '🚪', label: 'Porte' },
+];
+const ROT_Y = { back: 0, front: Math.PI, left: Math.PI / 2, right: -Math.PI / 2, isl: Math.PI };
+const palette = document.createElement('div');
+palette.id = 'palette';
+for (const it of PALETTE_ITEMS) {
+  const b = document.createElement('button');
+  b.className = 'pal-tile';
+  b.innerHTML = `<span class="ico">${it.ico}</span><span>${it.label}</span>`;
+  b.addEventListener('pointerdown', (e) => startPaletteDrag(it, b, e));
+  palette.appendChild(b);
+}
+document.getElementById('app').appendChild(palette);
+
+let palDrag = null;
+let pendingSelect = null; // re-sélection après le drop palette { key, idx } | { fixture } | { opening }
+
+function startPaletteDrag(item, tile, e) {
+  if (planEd.mode() === 'plan' || !current || e.button !== 0) return;
+  e.preventDefault();
+  deselectModule();
+  hidePopover();
+  palDrag = { item, tile };
+  ctx.controls.enabled = false;
+  tile.classList.add('dragging');
+  try { tile.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
+}
+
+function cancelPaletteDrag() {
+  if (!palDrag) return;
+  palDrag.tile.classList.remove('dragging');
+  palDrag = null;
+  killGhost();
+  ctx.controls.enabled = true;
+}
+
+// meilleure place pour un caisson de palette : la plage vide (du bon genre,
+// tous murs et îlot confondus) dont le point snappé est le plus près du rayon
+function paletteModulePreview(e, it) {
+  const f = current.focus;
+  const kindCh = it.upper ? 'u' : 'g';
+  const wM = it.wIn * IN;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, ctx.camera);
+  let best = null, bd = Infinity;
+  for (const [k, comp] of Object.entries(current.gapComps || {})) {
+    const isIsl = k === 'isl';
+    if (isIsl && it.upper) continue;
+    const ch = isIsl ? 'g' : (gapPrefix(k) || '').slice(-1);
+    if (ch !== kindCh) continue;
+    const ref = modsOfGap(k)[0];
+    if (!ref) continue;
+    const wall = isIsl ? 'isl' : k.split(':')[0];
+    const along = cursorAlong(wall, e);
+    if (along == null) continue;
+    const rev = isIsl;
+    const startM = isIsl ? current.islandRect.x0 + 0.04 : parseInt(k.slice(gapPrefix(k).length), 10) * IN;
+    const totalM = comp.totalIn * IN;
+    let cum = 0, run = null;
+    const runs = [];
+    const push = () => { if (run) { runs.push(run); run = null; } };
+    for (let i = 0; i < comp.widths.length; i++) {
+      const wi = comp.widths[i] * IN;
+      const a0 = rev ? startM + totalM - cum - wi : startM + cum;
+      const a1 = a0 + wi;
+      if (comp.types[i] === 'vide') {
+        if (run && Math.abs(a0 - run[1]) < 0.002) run[1] = a1;
+        else if (run && Math.abs(a1 - run[0]) < 0.002) run[0] = a0;
+        else { push(); run = [a0, a1]; }
+      } else push();
+      cum += wi;
+    }
+    push();
+    for (const r of runs) {
+      if (r[1] - r[0] < wM - 0.001) continue;
+      const c = Math.min(Math.max(along, r[0] + wM / 2), r[1] - wM / 2);
+      const axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
+      const p = ref.getWorldPosition(tmpA.clone());
+      p[axis] = c - (axis === 'x' ? f.a / 2 : f.roomD / 2);
+      const score = raycaster.ray.distanceToPoint(p);
+      if (score < bd) { bd = score; best = { k, c, a0: r[0], a1: r[1], startM, totalM, rev, axis, ref, p: p.clone(), wM }; }
+    }
+  }
+  return best;
+}
+
+// meilleure place pour un électro / une ouverture : le mur le plus proche du rayon
+function paletteWallPreview(e, it) {
+  const f = current.focus;
+  const walls = it.kind === 'opening'
+    ? (state.layout === 'galley' ? ['back', 'left', 'right', 'front'] : ['back', 'left', 'right'])
+    : f.cabWalls;
+  pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, ctx.camera);
+  let best = null;
+  for (const wall of walls) {
+    const along = cursorAlong(wall, e);
+    if (along == null) continue;
+    const len = f.wallLens[wall] ?? f.a;
+    const isOpen = it.kind === 'opening';
+    const c0 = Math.min(Math.max(along, it.wM / 2 + 0.08), len - it.wM / 2 - 0.08);
+    const resolved = isOpen ? resolveOpeningPos(state, wall, it.wM, along, null) : c0;
+    const c = resolved ?? c0;
+    const axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
+    const p = new THREE.Vector3();
+    p.y = isOpen ? (it.y0 + it.y1) / 2 : it.h / 2;
+    const dHalf = isOpen ? 0 : it.d / 2;
+    if (wall === 'back') p.z = -f.roomD / 2 + dHalf;
+    else if (wall === 'front') p.z = f.roomD / 2 - dHalf;
+    else if (wall === 'left') p.x = f.planes.left - f.a / 2 + dHalf;
+    else p.x = f.planes.right - f.a / 2 - dHalf;
+    p[axis] = c - (axis === 'x' ? f.a / 2 : f.roomD / 2);
+    const score = raycaster.ray.distanceToPoint(p);
+    if (!best || score < best.score) best = { wall, c, p, score, axis, valid: !isOpen || resolved != null };
+  }
+  return best;
+}
+
+document.addEventListener('pointermove', (e) => {
+  if (!palDrag || !current) return;
+  const it = palDrag.item;
+  if (it.kind === 'module') {
+    const t = paletteModulePreview(e, it);
+    if (!t) { if (ghost) { ghostTint(false); ghost.drop = null; dimsChip.hidden = true; } return; }
+    if (!ghost) {
+      const gp = t.ref.geometry.parameters;
+      ghost = makeBoxGhost(t.wM, gp.height, gp.depth);
+    }
+    ghost.mesh.position.copy(t.p);
+    ghost.mesh.quaternion.copy(t.ref.getWorldQuaternion(new THREE.Quaternion()));
+    ghost.axis = t.axis;
+    ghostTint(true);
+    showDims((t.c - t.wM / 2 - t.a0) / IN, (t.a1 - t.c - t.wM / 2) / IN);
+    const offIn = t.rev ? (t.startM + t.totalM - t.c) / IN : (t.c - t.startM) / IN;
+    ghost.drop = { kind: 'pal-module', gapKey: t.k, offIn };
+    return;
+  }
+  const t = paletteWallPreview(e, it);
+  if (!t) return;
+  if (!ghost) {
+    ghost = it.kind === 'opening'
+      ? makeBoxGhost(it.wM, it.y1 - it.y0, 0.18)
+      : makeBoxGhost(it.wM, it.h, it.d);
+  }
+  ghost.mesh.position.copy(t.p);
+  ghost.mesh.rotation.set(0, ROT_Y[t.wall] ?? 0, 0);
+  ghost.axis = t.axis;
+  // limite d'ouvertures (3 fenêtres / 2 portes) comme le menu d'ajout
+  const maxed = it.kind === 'opening'
+    && state.constraints.openings.filter((o) => o.type === it.type).length >= it.max;
+  const ok = t.valid && !maxed;
+  ghostTint(ok);
+  ghost.drop = ok
+    ? (it.kind === 'opening'
+      ? { kind: 'pal-opening', wall: t.wall, pos: t.c }
+      : { kind: 'pal-fixture', wall: t.wall, pos: t.c })
+    : null;
+});
+
+document.addEventListener('pointerup', () => {
+  if (!palDrag) return;
+  const it = palDrag.item;
+  const drop = ghost ? ghost.drop : null;
+  cancelPaletteDrag();
+  if (!drop) return;
+  justDropped = true;
+  pendingSettle = true;
+  if (drop.kind === 'pal-module') {
+    const r = insertModuleAt(current.gapComps, drop.gapKey, drop.offIn, it.type, it.wIn);
+    if (r) {
+      pendingSelect = { key: drop.gapKey, idx: r.idx };
+      setState({ gapPlans: r.plans });
+    }
+  } else if (drop.kind === 'pal-fixture') {
+    pendingSelect = { fixture: it.fixture };
+    setState({
+      appliances: it.appl,
+      constraints: { [it.fixture]: { auto: false, wall: drop.wall, pos: drop.pos } },
+      gapPlans: freezeWallPlans(drop.wall),
+    });
+  } else if (drop.kind === 'pal-opening') {
+    const seq = Math.max(100, ...state.constraints.openings.map((o) => o.id)) + 1;
+    pendingSelect = { opening: seq };
+    setState({ constraints: { openings: [...state.constraints.openings, { id: seq, type: it.type, wall: drop.wall, pos: drop.pos, width: it.wM }] } });
+  }
 });
 
 // un objet est cliquable seulement si toute sa chaîne de parents est visible

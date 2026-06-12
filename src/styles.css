@@ -426,6 +426,25 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   #modbar button { padding: 9px 12px; }
 }
 
+/* palette d'ajout : une rangée de vignettes à glisser dans la scène */
+#palette {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 38;
+  display: flex; gap: 3px; padding: 6px;
+  background: var(--paper); border-radius: 16px;
+  box-shadow: var(--shadow-lg); border: 1px solid rgba(255,255,255,.7);
+}
+.pal-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 9px; border-radius: 11px; min-width: 56px;
+  font-size: 10.5px; font-weight: 600; color: rgba(var(--ink-rgb),.75);
+  cursor: grab; transition: background .15s, transform .15s; touch-action: none;
+  white-space: nowrap;
+}
+.pal-tile .ico { font-size: 17px; line-height: 1; }
+.pal-tile:hover { background: rgba(var(--brass-rgb),.14); transform: translateY(-2px); }
+.pal-tile.dragging { background: var(--brass); color: #fff; cursor: grabbing; }
+@media (max-width: 860px) { #palette { display: none; } }
+
 /* cotes vivantes pendant le drag : « ← 13 po · 18 po → » au-dessus du fantôme */
 #dragdims[hidden] { display: none; }
 #dragdims {
