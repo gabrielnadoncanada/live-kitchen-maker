@@ -1328,6 +1328,7 @@ export function buildKitchen(state) {
   // REQ-1008 : frigo et lave-vaisselle déplaçables en vue plan (positions manuelles)
   const consFridge = cons.fridge && !cons.fridge.auto && cabWalls.includes(cons.fridge.wall) ? cons.fridge : null;
   const consDw = cons.dw && !cons.dw.auto && cabWalls.includes(cons.dw.wall) ? cons.dw : null;
+  const consPantry = cons.pantry && !cons.pantry.auto && cabWalls.includes(cons.pantry.wall) ? cons.pantry : null;
   // l'évier se retire aussi (page blanche : la cuisine démarre vraiment vide)
   const wantSink = islFeature !== 'evier' && state.appliances.sink !== false;
   if (wantSink) addFixed(sinkWall, 'evier', SINK_W, sinkAlong, 1);
@@ -1341,21 +1342,28 @@ export function buildKitchen(state) {
   if (state.appliances.fridge) {
     if (consFridge) {
       addFixed(consFridge.wall, 'frigo', FRIDGE_W, consFridge.pos, 3, true);
-      const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
-      // le garde-manger reste en bout de ruban, là où il y a de la place
-      if (endSeg) addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - PANTRY_W / 2, 5, true);
     } else {
       const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
-      if (endSeg) {
-        addFixed(fridgeWall, 'frigo', FRIDGE_W, endSeg[1] - FRIDGE_W / 2, 3, true);
-        addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - FRIDGE_W - PANTRY_W / 2, 5, true);
-      }
+      if (endSeg) addFixed(fridgeWall, 'frigo', FRIDGE_W, endSeg[1] - FRIDGE_W / 2, 3, true);
+    }
+  }
+  // garde-manger : SON PROPRE caisson, indépendant du frigo — il naît en bout
+  // de ruban pleine hauteur (à côté du frigo auto si présent) puis vit sa vie :
+  // saisissable, déplaçable (cons.pantry) et supprimable comme un électro
+  if (state.appliances.pantry !== false) {
+    if (consPantry) {
+      addFixed(consPantry.wall, 'garde-manger', PANTRY_W, consPantry.pos, 5, true);
+    } else {
+      const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
+      const beside = state.appliances.fridge && !consFridge ? FRIDGE_W : 0;
+      if (endSeg) addFixed(fridgeWall, 'garde-manger', PANTRY_W, endSeg[1] - beside - PANTRY_W / 2, 5, true);
     }
   }
   if (state.appliances.range && cookingMural) {
     const endSeg = (tallSegsByWall[fridgeWall] || []).slice(-1)[0] || (segsByWall[fridgeWall] || []).slice(-1)[0];
     if (endSeg) {
-      const off = state.appliances.fridge ? FRIDGE_W + PANTRY_W : 0;
+      const off = (state.appliances.fridge && !consFridge ? FRIDGE_W : 0)
+        + (state.appliances.pantry !== false && !consPantry ? PANTRY_W : 0);
       addFixed(fridgeWall, 'four-mural', OVEN_W, endSeg[1] - off - OVEN_W / 2, 2.5, true);
     }
   }
@@ -1890,7 +1898,7 @@ export function buildKitchen(state) {
         // voisins (dragMate) s'écartent en direct pendant un réordonnancement
         if (detachedSel) {
           const exact = detachedSel.key === slot.gapKey && detachedSel.idx === slot.gapIndex;
-          const fix = detachedSel.fixture && { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' }[type] === detachedSel.fixture;
+          const fix = detachedSel.fixture && { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge', 'garde-manger': 'pantry' }[type] === detachedSel.fixture;
           const mate = detachedSel.prefix != null && slot.gapKey != null && slot.gapIndex != null
             && (slot.gapKey === detachedSel.prefix
               || (slot.gapKey.startsWith(detachedSel.prefix) && /^\d+$/.test(slot.gapKey.slice(detachedSel.prefix.length))));
@@ -1900,11 +1908,12 @@ export function buildKitchen(state) {
           }
         }
         // les électros aussi sont saisissables : glisser = déplacer (position
-        // manuelle re-résolue par le solveur), corbeille = retirer
-        const FIXTURE_KEYS = { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge' };
+        // manuelle re-résolue par le solveur), corbeille = retirer. Le
+        // garde-manger est traité pareil : c'est SON caisson, pas un satellite
+        const FIXTURE_KEYS = { evier: 'water', cuisiniere: 'stove', plaque: 'stove', lavevaisselle: 'dw', frigo: 'fridge', 'garde-manger': 'pantry' };
         if (FIXTURE_KEYS[type]) {
-          const fh = type === 'frigo' ? TALL_H : CARCASS_H + PLINTH;
-          const fd = type === 'frigo' ? 0.7 : BASE_D;
+          const fh = (type === 'frigo' || type === 'garde-manger') ? TALL_H : CARCASS_H + PLINTH;
+          const fd = type === 'frigo' ? 0.7 : type === 'garde-manger' ? PANTRY_D : BASE_D;
           const hit = new THREE.Mesh(
             new THREE.BoxGeometry(slot.w, fh, fd),
             new THREE.MeshBasicMaterial({ visible: false })

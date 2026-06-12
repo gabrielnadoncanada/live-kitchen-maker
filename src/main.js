@@ -306,7 +306,7 @@ function findEditable(key, idx) {
   return current.editables.find((m) => m.userData.gapKey === key && m.userData.gapIndex === idx) || null;
 }
 
-const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur' };
+const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur', pantry: 'Garde-manger' };
 const CORNER_TITLES = { bl: 'Caisson de coin', br: 'Caisson de coin', ul: 'Coin mural', ur: 'Coin mural' };
 function selectionTitle(ud) {
   return ud.fixture
@@ -484,9 +484,9 @@ function openContext(x = window.innerWidth / 2, y = 130) {
     document.getElementById('popoverTitle').textContent = selectionTitle(ud);
     document.getElementById('popoverOpts').innerHTML = '';
     placePopover(popEl, x, y, true);
-  } else if (ud.fixture) {
+  } else if (ud.fixture && ud.fixture !== 'pantry') {
     showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
-  } else if (ud.opening || ud.corner) {
+  } else if (ud.opening || ud.corner || ud.fixture === 'pantry') {
     document.getElementById('popoverTitle').textContent = selectionTitle(ud);
     document.getElementById('popoverOpts').innerHTML = '';
     placePopover(popEl, x, y);
@@ -500,8 +500,9 @@ function openContext(x = window.innerWidth / 2, y = 130) {
   ctxRow.querySelector('.cx-left').style.display = noMove ? 'none' : '';
   ctxRow.querySelector('.cx-right').style.display = noMove ? 'none' : '';
   // ⚙ seulement en compact, et seulement quand des réglages existent
-  // (caissons et espaces vides → éditeur de module ; électros → éditeur surface)
-  const hasSettings = !!ud.fixture || (!ud.opening && !ud.corner);
+  // (caissons et espaces vides → éditeur de module ; électros → éditeur
+  // surface ; le garde-manger n'a pas de réglages, juste déplacer/retirer)
+  const hasSettings = ud.fixture ? ud.fixture !== 'pantry' : (!ud.opening && !ud.corner);
   ctxRow.querySelector('.cx-set').style.display = compact && hasSettings ? '' : 'none';
 }
 
@@ -536,12 +537,24 @@ function freezeWallPlans(wall) {
   return patch;
 }
 
+// toucher au frigo ne doit JAMAIS faire bouger le garde-manger : s'il est
+// encore en position auto (sa cible dépend du frigo), on l'épingle là où il est
+function pinPantry(patch) {
+  if (state.appliances.pantry === false) return patch;
+  if (state.constraints.pantry && !state.constraints.pantry.auto) return patch;
+  const p = current.editables.find((m) => m.userData.fixture === 'pantry');
+  if (p) patch.constraints = { ...(patch.constraints || {}), pantry: { auto: false, wall: p.userData.wall, pos: p.userData.along } };
+  return patch;
+}
+
 // décaler un électro de 3 po (le solveur revalide : fenêtres, dégagements…)
 function nudgeFixture(dir) {
   const ud = selection.ud;
   const len = current.focus.wallLens[ud.wall];
   const pos = Math.min(Math.max(ud.along + visDir(ud.wall, dir) * 0.075, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
-  setState({ constraints: { [ud.fixture]: { auto: false, wall: ud.wall, pos } } });
+  const patch = { constraints: { [ud.fixture]: { auto: false, wall: ud.wall, pos } } };
+  if (ud.fixture === 'fridge') pinPantry(patch);
+  setState(patch);
 }
 
 // décaler une fenêtre/porte de 3 po (anti-chevauchement REQ-802 respecté)
@@ -633,13 +646,15 @@ function actDelete(btn) {
   if (selection.ud.fixture) {
     const off = {
       stove: { range: false, hood: false }, fridge: { fridge: false },
-      dw: { dw: false }, water: { sink: false },
+      dw: { dw: false }, water: { sink: false }, pantry: { pantry: false },
     }[selection.ud.fixture];
     if (!off) return flashDeny(btn);
-    const frozen = freezeWallPlans(selection.ud.wall);
+    const fix = selection.ud.fixture;
+    const patch = { appliances: off, gapPlans: freezeWallPlans(selection.ud.wall) };
+    if (fix === 'fridge') pinPantry(patch); // retirer le frigo ne déplace pas le garde-manger
     deselectModule();
     hidePopover();
-    setState({ appliances: off, gapPlans: frozen });
+    setState(patch);
     return;
   }
   const comp = current.gapComps[selection.key];
@@ -733,7 +748,7 @@ const ROOM_DIR = { back: [0, 1], front: [0, -1], left: [1, 0], right: [-1, 0], i
 function carryVector() {
   const ud = selection.ud;
   const wall = ud.wall || (selection.key || '').split(':')[0];
-  const tall = ud.fixture === 'fridge' || ['frigo', 'garde-manger', 'four-mural'].includes(ud.current);
+  const tall = ud.fixture === 'fridge' || ud.fixture === 'pantry' || ['frigo', 'garde-manger', 'four-mural'].includes(ud.current);
   const pull = tall ? 0 : ud.upper ? 0.45 : 0.68; // 68 cm : le dos passe le nez du comptoir
   const lift = tall ? 0.06 : ud.upper ? 0.08 : 0.12;
   const [dx, dz] = ROOM_DIR[wall] || [0, 0];
@@ -1147,10 +1162,12 @@ function endModuleDrag(cancelled = false) {
   justDropped = true;
   let applied = false;
   if (drop.kind === 'fixture') {
-    setState({
+    const patch = {
       constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos: drop.pos } },
       gapPlans: freezeWallPlans(selection.ud.wall),
-    });
+    };
+    if (selection.ud.fixture === 'fridge') pinPantry(patch);
+    setState(patch);
     pendingSettle = true;
     applied = true;
   } else if (drop.kind === 'opening') {
@@ -1230,6 +1247,7 @@ const PALETTE_ITEMS = [
   { kind: 'fixture', fixture: 'water', wM: 0.9, h: 0.87, d: 0.6, ico: '💧', label: 'Évier', appl: { sink: true } },
   { kind: 'fixture', fixture: 'stove', wM: 0.77, h: 0.9, d: 0.65, ico: '🍳', label: 'Cuisinière', appl: { range: true, hood: true } },
   { kind: 'fixture', fixture: 'fridge', wM: 0.93, h: 2.25, d: 0.7, ico: '🧊', label: 'Frigo', appl: { fridge: true } },
+  { kind: 'fixture', fixture: 'pantry', wM: 0.62, h: 2.18, d: 0.69, ico: '🗄', label: 'Garde-manger', appl: { pantry: true } },
   { kind: 'fixture', fixture: 'dw', wM: 0.61, h: 0.87, d: 0.6, ico: '🍽', label: 'Lave-vaisselle', appl: { dw: true } },
   { kind: 'opening', type: 'fenetre', wM: 1.25, y0: 1.52, y1: 2.2, max: 3, ico: '🪟', label: 'Fenêtre' },
   { kind: 'opening', type: 'porte', wM: 0.85, y0: 0, y1: 2.05, max: 2, ico: '🚪', label: 'Porte' },

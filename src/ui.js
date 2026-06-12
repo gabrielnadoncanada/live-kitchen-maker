@@ -368,12 +368,12 @@ export function buildPanel() {
       setState(k === 'libre'
         ? {
           autoFill: false, gapPlans: null, island: false,
-          appliances: { fridge: false, range: false, hood: false, dw: false, sink: false },
+          appliances: { fridge: false, range: false, hood: false, dw: false, sink: false, pantry: false },
           cornerOff: { bl: true, br: true, ul: true, ur: true },
         }
         : {
           autoFill: true, gapPlans: null,
-          appliances: { fridge: true, range: true, hood: true, dw: true, sink: true },
+          appliances: { fridge: true, range: true, hood: true, dw: true, sink: true, pantry: true },
           cornerOff: { bl: false, br: false, ul: false, ur: false },
         });
       // la sélection en cours n'a plus de sens après un changement de mode
@@ -987,6 +987,7 @@ export function showModuleEditor(x, y, data, comp) {
         { key: 'stove', label: 'Cuisinière + hotte', ico: '🍳', need: 31, appl: { range: true, hood: true } },
         { key: 'fridge', label: 'Réfrigérateur', ico: '🧊', need: 37, appl: { fridge: true } },
         { key: 'dw', label: 'Lave-vaisselle', ico: '🍽', need: 24, appl: { dw: true } },
+        { key: 'pantry', label: 'Garde-manger', ico: '🗄', need: 25, appl: { pantry: true } },
       ];
       opts.append(el('<div class="pop-label">Ajouter un électroménager</div>'));
       for (const a of APPLIANCE_ADDS) {
