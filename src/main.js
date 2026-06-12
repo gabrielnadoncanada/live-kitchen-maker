@@ -363,9 +363,16 @@ function deselectModule() {
 }
 
 // la barre suit le caisson sélectionné (projection écran, recalée chaque frame) ;
-// elle s'efface si le point passe derrière la caméra ou si le mur est escamoté
+// elle s'efface si le point passe derrière la caméra ou si le mur est escamoté.
+// Sur mobile, elle est ANCRÉE en bas (au-dessus du sheet) — jamais sur la scène.
 function positionModbar() {
   if (!selection || modbar.hidden) return;
+  if (mobileMq.matches) {
+    modbar.style.visibility = 'visible';
+    modbar.style.left = '';
+    modbar.style.top = '';
+    return;
+  }
   const v = new THREE.Vector3();
   selection.mesh.getWorldPosition(v);
   const behind = v.clone().applyMatrix4(ctx.camera.matrixWorldInverse).z > -0.1;
