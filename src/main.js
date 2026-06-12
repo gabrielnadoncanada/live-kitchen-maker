@@ -60,7 +60,11 @@ function rebuild() {
     if (m) attachSelection(m);
     else deselectModule();
   }
-  if (moveDrag) moveDrag.pending = false; // compositions à jour : le drag peut réappliquer
+  // micro-animation d'installation après un drop (petit pop d'échelle)
+  if (pendingSettle && selection && selection.mesh.parent && !selection.ud.opening) {
+    settle = { obj: selection.mesh.parent, t0: performance.now() };
+  }
+  pendingSettle = false;
 }
 let lastQuote = null;
 
@@ -80,6 +84,11 @@ ctx.setTick(() => {
     w.group.visible = tmpV.dot(w.normal) > -0.02;
   }
   positionModbar(); // la mini-barre suit le caisson sélectionné quand la caméra bouge
+  if (settle) {
+    const f2 = (performance.now() - settle.t0) / 200;
+    if (f2 >= 1) { settle.obj.scale.setScalar(1); settle = null; }
+    else settle.obj.scale.setScalar(1 + 0.04 * (1 - f2) * (1 - f2));
+  }
 });
 
 // un asset GLB qui finit de charger remplace son repli procédural au
@@ -90,7 +99,10 @@ let rebuildTimer = null;
 let lastRebuild = 0;
 subscribe(() => {
   const veil = document.getElementById('loadveil');
-  const dragging = planEd.isDragging() || !!(moveDrag && moveDrag.started);
+  // pas de voile pendant un geste ni au lâcher d'un drop (la reconstruction
+  // est quasi instantanée — le voile la ferait paraître lente)
+  const dragging = planEd.isDragging() || !!(moveDrag && moveDrag.started) || justDropped;
+  justDropped = false;
   if (!dragging) veil.classList.add('show');
   clearTimeout(rebuildTimer);
   // pendant un drag en vue plan : throttle (replanification en direct, ~7 fps),
@@ -214,14 +226,18 @@ canvas.addEventListener('pointerup', (e) => {
 function pickModule(x, y) {
   pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  // les hitbox d'un mur escamoté (maison de poupée) ne se cliquent pas à travers
-  let modHit = raycaster.intersectObjects(current.editables, false)[0] || null;
-  if (modHit && !chainVisible(modHit.object)) modHit = null;
+  // les hitbox d'un mur escamoté (maison de poupée) ne se cliquent pas à
+  // travers ; un espace VIDE est de l'air : tout objet réel touché par le
+  // rayon derrière lui gagne
+  const hits = raycaster.intersectObjects(current.editables, false).filter((h) => chainVisible(h.object));
+  const modHit = hits.find((h) => h.object.userData.current !== 'vide') || hits[0] || null;
   const surfHit = findSurfaceHit();
-  // le plus proche gagne : on n'édite pas un caisson à travers son comptoir.
-  // Tolérance 5 cm : la façade réelle (portes, panneaux cascade de l'îlot)
-  // flotte jusqu'à ~4 cm devant la hitbox du module.
-  if (modHit && (!surfHit || modHit.distance <= surfHit.distance + 0.05)) {
+  // le plus proche gagne — avec deux tolérances : 5 cm en général (façades,
+  // panneaux cascade à ~4 cm devant la hitbox), 20 cm quand la surface devant
+  // est un comptoir/dosseret (saisir le caisson à travers le débord du
+  // comptoir est l'intention évidente)
+  const pickTol = surfHit && (surfHit.kind.type === 'counter' || surfHit.kind.type === 'backsplash') ? 0.2 : 0.05;
+  if (modHit && (!surfHit || modHit.distance <= surfHit.distance + pickTol)) {
     const ud = modHit.object.userData;
     // fenêtre / porte : sélection simple (glisser, décaler, retirer)
     if (ud.opening) {
@@ -524,6 +540,91 @@ modbar.querySelector('.mb-del').addEventListener('click', (e) => {
 });
 modbar.querySelector('.mb-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
 
+// ————— drag fantôme : aucun rebuild pendant le geste —————
+// Le state ne bouge pas tant qu'on glisse : un fantôme translucide suit le
+// curseur en continu (60 fps), se snape dans les plages libres, et les cotes
+// vers les voisins s'affichent en direct. Tout ne s'applique qu'au lâcher.
+let ghost = null;   // { mesh, mat, axis, drop } — drop = action à appliquer au lâcher
+let settle = null;  // micro-animation d'installation après le drop
+
+const dimsChip = document.createElement('div');
+dimsChip.id = 'dragdims';
+dimsChip.hidden = true;
+document.getElementById('app').appendChild(dimsChip);
+
+const GHOST_OK = 0xd4ab6a, GHOST_BAD = 0xc0392b;
+function makeGhost() {
+  const src = selection.mesh;
+  const p = src.geometry.parameters;
+  const geo = new THREE.BoxGeometry(p.width, p.height, p.depth);
+  const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.28, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  const edgeMat = new THREE.LineBasicMaterial({ color: GHOST_OK });
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+  src.getWorldPosition(mesh.position);
+  src.getWorldQuaternion(mesh.quaternion);
+  ctx.scene.add(mesh);
+  const wall = selection.ud.wall || (selection.key || '').split(':')[0];
+  return { mesh, mat, edgeMat, axis: (wall === 'left' || wall === 'right') ? 'z' : 'x', drop: null };
+}
+
+function killGhost() {
+  if (!ghost) return;
+  ctx.scene.remove(ghost.mesh);
+  ghost.mesh.geometry.dispose();
+  ghost.mat.dispose();
+  ghost.edgeMat.dispose();
+  ghost = null;
+  dimsChip.hidden = true;
+}
+
+function ghostTint(ok) {
+  ghost.mat.color.setHex(ok ? GHOST_OK : GHOST_BAD);
+  ghost.edgeMat.color.setHex(ok ? GHOST_OK : GHOST_BAD);
+}
+
+// chip de cotes au-dessus du fantôme : « ← 13 po | 18 po → »
+function showDims(leftIn, rightIn) {
+  dimsChip.textContent = `← ${Math.round(leftIn)} po · ${Math.round(rightIn)} po →`;
+  dimsChip.hidden = false;
+  const v = ghost.mesh.position.clone();
+  v.y += ghost.mesh.geometry.parameters.height / 2 + 0.12;
+  v.project(ctx.camera);
+  const r = dimsChip.getBoundingClientRect();
+  dimsChip.style.left = `${Math.round(((v.x + 1) / 2) * window.innerWidth - r.width / 2)}px`;
+  dimsChip.style.top = `${Math.round(((1 - v.y) / 2) * window.innerHeight - r.height - 6)}px`;
+}
+
+// plages libres ABSOLUES (m, coord pièce) où le module saisi peut se poser :
+// les vides du même mur/genre, plus sa propre place actuelle
+function moduleFreeRuns() {
+  const pre = gapPrefix(selection.key);
+  const w = selection.ud.width;
+  const runs = [];
+  for (const [k, comp] of Object.entries(current.gapComps || {})) {
+    if (gapPrefix(k) !== pre) continue;
+    const rev = k === 'isl';
+    const startM = k === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(k.slice(pre.length), 10) * IN;
+    const totalM = comp.totalIn * IN;
+    let cum = 0, run = null;
+    const push = () => { if (run) { runs.push({ k, a0: run[0], a1: run[1], startM, totalM, rev }); run = null; } };
+    for (let i = 0; i < comp.widths.length; i++) {
+      const wi = comp.widths[i] * IN;
+      const free = comp.types[i] === 'vide' || (k === selection.key && i === selection.idx);
+      const a0 = rev ? startM + totalM - cum - wi : startM + cum;
+      const a1 = a0 + wi;
+      if (free) {
+        if (run && Math.abs(a0 - run[1]) < 0.002) run[1] = a1;
+        else if (run && Math.abs(a1 - run[0]) < 0.002) run[0] = a0;
+        else { push(); run = [a0, a1]; }
+      } else push();
+      cum += wi;
+    }
+    push();
+  }
+  return runs.filter((r) => r.a1 - r.a0 >= w - 0.001);
+}
+
 // ————— glissement du caisson sélectionné le long de son mur —————
 // position cible (gap + index) sous le pointeur, sur le mur du module sélectionné.
 // Tout se calcule depuis les positions MONDE réelles des modules (l'îlot pose
@@ -579,11 +680,15 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || planEd.mode() === 'plan' || !current) return;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  const modHit = raycaster.intersectObjects(current.editables, false)[0];
-  if (!modHit || !chainVisible(modHit.object)) return;
-  // occlusion : à travers un comptoir ou l'îlot, le geste reste une rotation
+  // un espace vide est de l'air : l'objet réel derrière gagne la saisie
+  const hits = raycaster.intersectObjects(current.editables, false).filter((h) => chainVisible(h.object));
+  const modHit = hits.find((h) => h.object.userData.current !== 'vide') || hits[0];
+  if (!modHit) return;
+  // occlusion : à travers l'îlot ou un autre meuble, le geste reste une
+  // rotation — mais saisir à travers le débord du comptoir est permis
   const surfHit = findSurfaceHit();
-  if (surfHit && modHit.distance > surfHit.distance + 0.05) return;
+  const grabTol = surfHit && (surfHit.kind.type === 'counter' || surfHit.kind.type === 'backsplash') ? 0.2 : 0.05;
+  if (surfHit && modHit.distance > surfHit.distance + grabTol) return;
   const fresh = !selection || selection.mesh !== modHit.object;
   // un coin se sélectionne mais ne se glisse pas (la caméra garde le geste)
   if (modHit.object.userData.corner) {
@@ -594,34 +699,34 @@ canvas.addEventListener('pointerdown', (e) => {
     hidePopover();
     selectModule(modHit.object);
   }
-  moveDrag = {
-    x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh,
-    home: selection.ud.fixture
-      ? { fixture: selection.ud.fixture, orig: JSON.parse(JSON.stringify(state.constraints[selection.ud.fixture] || null)) }
-      : selection.ud.opening
-        ? { opening: selection.ud.opening, orig: JSON.parse(JSON.stringify(state.constraints.openings.find((o) => o.id === selection.ud.opening) || null)) }
-        : { key: selection.key, idx: selection.idx },
-    saved: {}, savedKeys: new Set(),
-  };
+  // pendant le geste, le state ne bouge pas : le fantôme prévisualise tout
+  moveDrag = { x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh };
   ctx.controls.enabled = false;
   e.stopImmediatePropagation(); // ni OrbitControls ni le reste ne doivent voir ce geste
   try { canvas.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
 }, { capture: true });
 
-// position cible d'un électro glissé, le long de son mur
-function fixtureDragPos(e) {
-  const ud = selection.ud;
+// coordonnée du curseur le long d'un mur (coord pièce, m) — îlot : plan horizontal
+function cursorAlong(wall, e) {
   const f = current.focus;
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
   const pl = new THREE.Plane();
-  if (ud.wall === 'back') pl.set(new THREE.Vector3(0, 0, 1), f.roomD / 2);
-  else if (ud.wall === 'front') pl.set(new THREE.Vector3(0, 0, -1), f.roomD / 2);
-  else pl.set(new THREE.Vector3(1, 0, 0), -(f.planes[ud.wall] - f.a / 2));
+  if (wall === 'isl') pl.set(new THREE.Vector3(0, 1, 0), -0.45);
+  else if (wall === 'back') pl.set(new THREE.Vector3(0, 0, 1), f.roomD / 2);
+  else if (wall === 'front') pl.set(new THREE.Vector3(0, 0, -1), f.roomD / 2);
+  else pl.set(new THREE.Vector3(1, 0, 0), -(f.planes[wall] - f.a / 2));
   const hp = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(pl, hp)) return null;
-  const along = alongAxis(ud.wall, hp, f);
-  const len = f.wallLens[ud.wall];
+  return alongAxis(wall, hp, f);
+}
+
+// position cible d'un électro glissé, le long de son mur
+function fixtureDragPos(e) {
+  const ud = selection.ud;
+  const along = cursorAlong(ud.wall, e);
+  if (along == null) return null;
+  const len = current.focus.wallLens[ud.wall];
   return Math.min(Math.max(along, ud.width / 2 + 0.08), len - ud.width / 2 - 0.08);
 }
 
@@ -630,91 +735,107 @@ canvas.addEventListener('pointermove', (e) => {
   e.stopImmediatePropagation();
   const thresh = e.pointerType === 'touch' ? 10 : 6; // aligné sur le filtre de tap
   if (!moveDrag.started && Math.hypot(e.clientX - moveDrag.x0, e.clientY - moveDrag.y0) < thresh) return;
-  if (!moveDrag.started) { moveDrag.started = true; hidePopover(); canvas.style.cursor = 'grabbing'; }
-  // une application est en vol : attendre la reconstruction, sinon on
-  // recalculerait la cible sur des compositions périmées
-  if (moveDrag.pending) return;
-  // électro : position manuelle continue, revalidée par le solveur à chaque
-  // pas — au premier mouvement le mur est gelé pour que les caissons gardent
-  // leur place exacte pendant que l'électro circule
-  if (selection.ud.fixture) {
+  if (!moveDrag.started) {
+    moveDrag.started = true;
+    hidePopover();
+    canvas.style.cursor = 'grabbing';
+    modbar.hidden = true; // la barre laisse place au fantôme et aux cotes
+  }
+  if (!ghost) ghost = makeGhost();
+  const f = current.focus;
+  const ud = selection.ud;
+  const toWorld = (along) => along - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
+
+  // électro : suit le curseur librement (le solveur revalidera au lâcher)
+  if (ud.fixture) {
     const pos = fixtureDragPos(e);
     if (pos == null) return;
-    moveDrag.pending = true;
-    const patch = { constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos } } };
-    if (!moveDrag.froze) {
-      moveDrag.froze = true;
-      patch.gapPlans = freezeWallPlans(selection.ud.wall);
-    }
-    setState(patch);
+    ghost.mesh.position[ghost.axis] = toWorld(pos);
+    ghostTint(true);
+    ghost.drop = { kind: 'fixture', pos };
     return;
   }
-  // fenêtre / porte : glisse le long du mur, anti-chevauchement REQ-802
-  if (selection.ud.opening) {
+  // fenêtre / porte : le fantôme se pose sur la position résolue (REQ-802) ;
+  // rouge quand aucune place n'est possible à cet endroit
+  if (ud.opening) {
     const raw = fixtureDragPos(e);
     if (raw == null) return;
-    const p = resolveOpeningPos(state, selection.ud.wall, selection.ud.width, raw, selection.ud.opening);
-    if (p == null) return;
-    moveDrag.pending = true;
-    setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === selection.ud.opening ? { ...o, pos: p } : o)) } });
+    const p = resolveOpeningPos(state, ud.wall, ud.width, raw, ud.opening);
+    ghost.mesh.position[ghost.axis] = toWorld(p ?? raw);
+    ghostTint(p != null);
+    ghost.drop = p != null ? { kind: 'opening', pos: p } : null;
     return;
   }
-  const t = dragTarget(e);
-  if (!t) return;
-  // mémoriser les plans d'origine des gaps touchés (annulation par Échap)
-  const remember = () => {
-    for (const k of [selection.key, t.key]) {
-      if (!moveDrag.savedKeys.has(k)) {
-        moveDrag.savedKeys.add(k);
-        moveDrag.saved[k] = (state.gapPlans || {})[k] ?? null;
-      }
-    }
-  };
-  // 1) placement « position préservée » : le caisson suit le curseur dans les
-  // plages vides, RIEN d'autre ne bouge (la place quittée reste vide)
-  const comp0 = current.gapComps[selection.key];
-  if (comp0) {
-    // ignorer les micro-mouvements (le caisson est déjà à ±1,5 po du curseur)
-    if (t.key === selection.key) {
-      const c0 = comp0.widths.slice(0, selection.idx).reduce((a2, b2) => a2 + b2, 0) + comp0.widths[selection.idx] / 2;
-      if (Math.abs(c0 - t.offIn) < 1.5) return;
-    }
-    const r = placeModuleAt(current.gapComps, selection.key, selection.idx, t.key, t.offIn);
-    if (r) {
-      remember();
-      selection.key = t.key;
-      selection.idx = r.idx;
-      setState({ gapPlans: r.plans });
-      moveDrag.pending = true;
-      return;
-    }
+  // module : snap continu dans les plages libres + cotes vers les voisins
+  const wall = selection.key.split(':')[0];
+  const along = cursorAlong(wall, e);
+  if (along == null) return;
+  const w = ud.width;
+  let best = null, bd = Infinity;
+  for (const r of moduleFreeRuns()) {
+    const c = Math.min(Math.max(along, r.a0 + w / 2), r.a1 - w / 2);
+    const d2 = Math.abs(c - along);
+    if (d2 < bd) { bd = d2; best = { ...r, c }; }
   }
-  // 2) gap plein (cuisine proposée) : réordonnancement classique
-  if (t.key === selection.key && t.idx === selection.idx) return;
-  remember();
-  if (applySelectionMove(t.key, t.idx)) moveDrag.pending = true;
+  // un run sans aucun jeu (= sa propre place dans un mur plein) ne « tient »
+  // le fantôme que si le curseur reste proche ; au-delà, on prévisualise l'échange
+  if (best && (best.a1 - best.a0 - w > 0.04 || bd < 0.18)) {
+    ghost.mesh.position[ghost.axis] = toWorld(best.c);
+    ghostTint(true);
+    const dimL = (best.c - w / 2 - best.a0) / IN, dimR = (best.a1 - best.c - w / 2) / IN;
+    if (dimL + dimR >= 1) showDims(dimL, dimR);
+    else dimsChip.hidden = true;
+    const offIn = best.rev ? (best.startM + best.totalM - best.c) / IN : (best.c - best.startM) / IN;
+    ghost.drop = { kind: 'module', gapKey: best.k, offIn };
+  } else {
+    // aucun espace libre (cuisine proposée pleine) : le lâcher fera un échange
+    const len = wall === 'isl' ? f.a : (f.wallLens[wall] ?? f.a);
+    ghost.mesh.position[ghost.axis] = toWorld(Math.min(Math.max(along, w / 2), len - w / 2));
+    ghostTint(true);
+    dimsChip.hidden = true;
+    ghost.drop = { kind: 'module-reorder', x: e.clientX, y: e.clientY };
+  }
 }, { capture: true });
 
 // le simple clic (drag jamais démarré) retombe sur le flux de tap existant,
-// qui ouvre les paramètres du module déjà sélectionné
+// qui ouvre les paramètres du module déjà sélectionné. Le lâcher applique le
+// drop du fantôme en UNE reconstruction (Échap : rien n'a été touché).
+let justDropped = false;
 function endModuleDrag(cancelled = false) {
   if (!moveDrag) return;
   const d = moveDrag;
+  const drop = ghost ? ghost.drop : null;
+  killGhost();
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
-  if (cancelled && selection) {
-    if (d.home.fixture) {
-      setState({ constraints: { [d.home.fixture]: d.home.orig } });
-    } else if (d.home.opening && d.home.orig) {
-      setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === d.home.opening ? d.home.orig : o)) } });
-    } else if (d.savedKeys.size) {
-      selection.key = d.home.key;
-      selection.idx = d.home.idx;
-      setState({ gapPlans: Object.fromEntries([...d.savedKeys].map((k) => [k, d.saved[k]])) });
+  if (selection) modbar.hidden = false;
+  if (cancelled || !d.started || !drop || !selection) return;
+  justDropped = true;
+  if (drop.kind === 'fixture') {
+    setState({
+      constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos: drop.pos } },
+      gapPlans: freezeWallPlans(selection.ud.wall),
+    });
+    pendingSettle = true;
+  } else if (drop.kind === 'opening') {
+    setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === selection.ud.opening ? { ...o, pos: drop.pos } : o)) } });
+  } else if (drop.kind === 'module') {
+    const r = placeModuleAt(current.gapComps, selection.key, selection.idx, drop.gapKey, drop.offIn);
+    if (r) {
+      selection.key = drop.gapKey;
+      selection.idx = r.idx;
+      setState({ gapPlans: r.plans });
+      pendingSettle = true;
+    }
+  } else if (drop.kind === 'module-reorder') {
+    const t = dragTarget({ clientX: drop.x, clientY: drop.y });
+    if (t && (t.key !== selection.key || t.idx !== selection.idx) && applySelectionMove(t.key, t.idx)) {
+      pendingSettle = true;
     }
   }
 }
+let pendingSettle = false;
 canvas.addEventListener('pointerup', () => endModuleDrag(), { capture: true });
 canvas.addEventListener('pointercancel', () => endModuleDrag(true), { capture: true });
 document.addEventListener('keydown', (e) => {
@@ -857,7 +978,8 @@ export async function initApp() {
   if (process.env.NODE_ENV !== 'production') {
     window.__dbg = {
       ctx, getCurrent: () => current, state, setState, pickModule, selection: () => selection,
-      dragTarget: (e) => dragTarget(e), moveDrag: () => moveDrag,
+      dragTarget: (e) => dragTarget(e), moveDrag: () => moveDrag, ghost: () => ghost,
+      freeRuns: () => (selection ? moduleFreeRuns() : null),
       pickDebug(x, y) {
         pointer.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
         raycaster.setFromCamera(pointer, ctx.camera);

@@ -426,6 +426,16 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   #modbar button { padding: 9px 12px; }
 }
 
+/* cotes vivantes pendant le drag : « ← 13 po · 18 po → » au-dessus du fantôme */
+#dragdims[hidden] { display: none; }
+#dragdims {
+  position: fixed; z-index: 41; pointer-events: none;
+  background: rgba(28, 24, 18, .88); color: #f4e9d4;
+  font-size: 12px; font-weight: 700; letter-spacing: .06em;
+  padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Actions de la barre supérieure (photo HD, partage) */
 .top-action {
   width: 38px; height: 38px; border-radius: 50%; font-size: 16px;
