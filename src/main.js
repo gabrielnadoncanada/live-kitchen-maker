@@ -33,6 +33,7 @@ function rebuild() {
     disposeKitchen(current.group);
   }
   clearOutline();
+  clearHover();
   hidePopover();
   current = buildKitchen(state);
   ctx.scene.add(current.group);
@@ -1310,17 +1311,48 @@ function clearOutline() {
   }
 }
 
-// survol : curseur main sur les modules éditables
+// survol : liseré lumineux + curseur main sur tout ce qui est saisissable —
+// la découvrabilité sans aucun apprentissage (desktop seulement)
 let hoverThrottle = 0;
+let hover = null;
+function clearHover() {
+  if (!hover) return;
+  ctx.scene.remove(hover.line);
+  hover.line.geometry.dispose();
+  hover.line.material.dispose();
+  hover = null;
+}
+function setHover(mesh) {
+  if (hover && hover.mesh === mesh) return;
+  clearHover();
+  if (!mesh) return;
+  const line = new THREE.LineSegments(
+    new THREE.EdgesGeometry(mesh.geometry),
+    new THREE.LineBasicMaterial({ color: 0xfff3da, transparent: true, opacity: 0.55 })
+  );
+  mesh.updateWorldMatrix(true, false);
+  line.applyMatrix4(mesh.matrixWorld);
+  ctx.scene.add(line);
+  hover = { mesh, line };
+}
 canvas.addEventListener('pointermove', (e) => {
   if (planEd.mode() === 'plan') return; // curseur géré par l'éditeur de plan
   const now = performance.now();
   if (now - hoverThrottle < 90 || !current) return;
   hoverThrottle = now;
+  if (mobileMq.matches || moveDrag || palDrag) { clearHover(); return; }
   pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, ctx.camera);
-  // tout ce qui est éditable se saisit directement : curseur main
-  canvas.style.cursor = raycaster.intersectObjects(current.editables, false).length ? 'grab' : '';
+  // même règle que le clic : un vide est de l'air, l'occlusion compte
+  const hits = raycaster.intersectObjects(current.editables, false).filter((h2) => chainVisible(h2.object));
+  let h = hits.find((h2) => h2.object.userData.current !== 'vide') || hits[0] || null;
+  if (h) {
+    const surfHit = findSurfaceHit();
+    const tol = surfHit && (surfHit.kind.type === 'counter' || surfHit.kind.type === 'backsplash') ? 0.2 : 0.05;
+    if (surfHit && h.distance > surfHit.distance + tol) h = null;
+  }
+  canvas.style.cursor = h ? 'grab' : '';
+  setHover(h && (!selection || selection.mesh !== h.object) ? h.object : null);
 });
 
 document.addEventListener('pointerdown', (e) => {
