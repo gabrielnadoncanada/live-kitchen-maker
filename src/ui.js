@@ -1271,19 +1271,32 @@ function setupPopoverDrag(pop) {
 }
 
 // positionne un popover près du point cliqué (desktop) ou en drawer bas
-// plein-largeur (mobile) — où l'on pince aussi le sheet pour garder la 3D visible
-function placePopover(pop, x, y) {
+// plein-largeur (mobile). near=true force la carte COMPACTE près du point même
+// en mobile (actions rapides sous le doigt — le drawer, plus lent, attend
+// qu'on demande les réglages).
+export function placePopover(pop, x, y, near = false) {
   setupPopoverDrag(pop);
   pop.hidden = false;
-  if (window.matchMedia('(max-width: 860px)').matches) {
+  const mobile = window.matchMedia('(max-width: 860px)').matches;
+  pop.classList.toggle('compact', mobile && near);
+  if (mobile) document.dispatchEvent(new CustomEvent('sheet:peek')); // dégager la 3D
+  if (mobile && !near) {
     pop.style.left = '';
     pop.style.top = '';
-    document.dispatchEvent(new CustomEvent('sheet:peek'));
     return;
   }
   const r = pop.getBoundingClientRect();
-  pop.style.left = `${Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8)}px`;
-  pop.style.top = `${Math.min(Math.max(8, y - r.height - 18), window.innerHeight - r.height - 8)}px`;
+  const l = Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8);
+  const t = Math.min(Math.max(8, y - r.height - 18), window.innerHeight - r.height - 8);
+  // en mobile, les règles drawer sont en !important : on passe par des
+  // variables CSS que .popover.compact consomme
+  if (mobile) {
+    pop.style.setProperty('--cx-l', `${l}px`);
+    pop.style.setProperty('--cx-t', `${t}px`);
+  } else {
+    pop.style.left = `${l}px`;
+    pop.style.top = `${t}px`;
+  }
 }
 
 // petit toast de confirmation (lien copié, photo téléchargée…)

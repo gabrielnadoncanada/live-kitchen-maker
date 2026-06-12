@@ -403,63 +403,26 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
 .popover-opts button.deny { animation: deny .3s; background: rgba(192,57,43,.16) !important; }
 @keyframes deny { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 
-/* mini-barre de sélection : sombre et contrastée sur la cuisine claire,
-   flèche vers l'objet sélectionné — impossible de la rater */
-#modbar[hidden] { display: none; } /* display:flex ci-dessous battrait l'attribut hidden */
-#modbar {
-  position: fixed; z-index: 39; display: flex; align-items: center; gap: 3px;
-  background: rgba(30, 26, 20, .92); color: #f4e9d4;
-  border-radius: 12px; padding: 5px 7px;
-  box-shadow: 0 10px 32px rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12);
-  backdrop-filter: blur(6px);
-  animation: modbarIn .28s cubic-bezier(.34,1.56,.64,1);
-}
-@keyframes modbarIn { from { opacity: 0; transform: translateY(10px) scale(.9); } }
-#modbar::after {
-  content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px;
-  border: 6px solid transparent; border-top-color: rgba(30, 26, 20, .92); border-bottom: 0;
-}
-#modbar .mb-title {
-  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-  color: rgba(244, 233, 212, .6); padding: 0 6px 0 3px; white-space: nowrap;
-}
-#modbar button {
-  padding: 6px 9px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
-  color: #f4e9d4; transition: background .15s; white-space: nowrap;
-}
-#modbar button:hover { background: rgba(255,255,255,.14); }
-#modbar .mb-close { opacity: .55; }
-#modbar button.deny { animation: deny .3s; background: rgba(192,57,43,.4) !important; }
-@media (max-width: 860px) {
-  /* mobile : barre contextuelle ancrée au-dessus du sheet, jamais sur la scène */
-  #modbar {
-    left: 50% !important; right: auto !important; top: auto !important;
-    transform: translateX(-50%);
-    bottom: calc(var(--sheet-h, 88px) + 12px);
-    max-width: calc(100vw - 16px);
-    overflow-x: auto;
-    animation: modbarInM .22s ease-out;
-  }
-  #modbar::after { display: none; }
-  #modbar button { padding: 9px 12px; }
-}
-@keyframes modbarInM { from { opacity: 0; } }
+/* (l'ancienne mini-barre flottante a été remplacée par la carte contextuelle) */
+#ctxRow button.deny { animation: deny .3s; background: rgba(192,57,43,.18) !important; }
 
-/* rangée d'actions contextuelles dans le drawer (mobile seulement) */
-#ctxRow { display: none; }
+/* rangée d'actions de la carte contextuelle (desktop et mobile) */
+#ctxRow {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 2px 10px; margin-bottom: 8px;
+  border-bottom: 1px dashed rgba(var(--ink-rgb), .12);
+}
+#ctxRow button {
+  padding: 7px 11px; border-radius: 9px;
+  font-size: 12.5px; font-weight: 600;
+  border: 1.5px solid var(--line);
+  transition: background .15s;
+}
+#ctxRow button:hover { background: rgba(var(--brass-rgb), .12); }
+#ctxRow .cx-spacer { flex: 1; }
+#ctxRow .cx-close { border: none; opacity: .6; }
 @media (max-width: 860px) {
-  #ctxRow {
-    display: flex; align-items: center; gap: 6px;
-    padding: 0 2px 10px; margin-bottom: 8px;
-    border-bottom: 1px dashed rgba(var(--ink-rgb), .12);
-  }
-  #ctxRow button {
-    padding: 8px 12px; border-radius: 9px;
-    font-size: 13px; font-weight: 600;
-    border: 1.5px solid var(--line);
-  }
-  #ctxRow .cx-spacer { flex: 1; }
-  #ctxRow .cx-close { border: none; opacity: .6; }
+  #ctxRow button { padding: 9px 12px; font-size: 13px; }
 }
 
 /* annuler / rétablir : à gauche du sélecteur de vue */
@@ -699,6 +662,20 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   .popover-title { touch-action: none; }
   .popover-opts button { padding: 12px 13px; }
   .pop-chips .chip { padding: 10px 14px; font-size: 13px; }
+
+  /* ——— carte contextuelle COMPACTE : près de l'objet, pas en drawer ———
+     actions sous le doigt (◀ ▶ 🗑 ⚙ ✕) — position posée par placePopover
+     via --cx-l/--cx-t (les règles drawer ci-dessus étant en !important) */
+  .popover.compact {
+    left: var(--cx-l, 8px) !important; right: auto !important;
+    top: var(--cx-t, 80px) !important; bottom: auto !important;
+    width: max-content; max-width: calc(100vw - 16px);
+    border-radius: 15px; padding: 11px 13px; max-height: none; overflow: visible;
+    animation: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .popover.compact .pop-grip { display: none; }
+  .popover.compact .popover-title { margin-bottom: 0; touch-action: auto; }
+  .popover.compact #ctxRow { padding-bottom: 8px; margin-bottom: 6px; }
 
   /* éléments flottants : toujours au-dessus du sheet */
   .nkba-chip { left: 10px; bottom: calc(var(--sheet-h) + 12px); max-width: calc(100vw - 20px); }

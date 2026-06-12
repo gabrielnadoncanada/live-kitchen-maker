@@ -5,7 +5,7 @@ import { buildKitchen, disposeKitchen, setDetachedModule } from './kitchen.js';
 import { setAssetReadyCallback } from './assets3d.js';
 import { state, setState, subscribe, undo, redo, canUndo, canRedo } from './state.js';
 import { computeQuote } from './pricing.js';
-import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, showToast, reorderModule, placeModuleAt, insertModuleAt, moduleTypeLabel } from './ui.js';
+import { buildPanel, renderQuote, renderNkba, showModuleEditor, showSurfaceEditor, showMenu, hidePopover, placePopover, showToast, reorderModule, placeModuleAt, insertModuleAt, moduleTypeLabel } from './ui.js';
 import { resolveOpeningPos } from './openings.js';
 import { IN } from './skuCatalog.js';
 import { buildShareUrl, applySharedConfig } from './share.js';
@@ -220,10 +220,13 @@ document.getElementById('viewBtns').addEventListener('click', (e) => {
 // Tout est touchable : il faut donc filtrer sévèrement ce qui compte comme un
 // « tap ». Au doigt : court (< 400 ms), immobile (< 10 px), et jamais en chaîne
 // (un éditeur déjà ouvert se ferme au tap suivant au lieu d'en ouvrir un autre).
+// En phase capture : le handler d'armement du drag (capture aussi, plus bas)
+// fait stopImmediatePropagation — enregistré ici en premier, ce recorder
+// s'exécute avant lui et le tap reste détectable même sur un caisson.
 let downAt = null;
 canvas.addEventListener('pointerdown', (e) => {
   downAt = { x: e.clientX, y: e.clientY, t: performance.now(), touch: e.pointerType === 'touch' };
-});
+}, { capture: true });
 canvas.addEventListener('pointerup', (e) => {
   if (!downAt) return;
   const d = downAt;
@@ -233,9 +236,13 @@ canvas.addEventListener('pointerup', (e) => {
   if (moved > (d.touch ? 10 : 6)) return; // c'était une rotation de caméra
   if (d.touch && held > 400) return;      // appui long = manipulation, pas un choix
   if (planEd.mode() === 'plan') return;   // l'éditeur de plan gère ses propres clics
-  if (moveDrag && moveDrag.freshSelect) return; // ce geste vient de sélectionner : pas d'éditeur en plus
-  if (d.touch && !document.getElementById('popover').hidden) {
-    hidePopover(); // la sélection (contour + barre) reste : on ferme juste l'éditeur
+  // tactile : relâcher un maintien-pour-saisir sans bouger ne doit pas ouvrir la carte
+  if (d.touch && moveDrag && moveDrag.freshSelect) return;
+  // drawer ouvert (réglages complets) : le tap suivant le ferme. La carte
+  // COMPACTE, elle, laisse passer le tap — on saute d'un objet à l'autre direct.
+  const popOpen = document.getElementById('popover');
+  if (d.touch && !popOpen.hidden && !popOpen.classList.contains('compact')) {
+    hidePopover(); // la sélection (contour) reste : on ferme juste l'éditeur
     return;
   }
   pickModule(e.clientX, e.clientY);
@@ -257,43 +264,14 @@ function pickModule(x, y) {
   const pickTol = surfHit && (surfHit.kind.type === 'counter' || surfHit.kind.type === 'backsplash') ? 0.2 : 0.05;
   if (modHit && (!surfHit || modHit.distance <= surfHit.distance + pickTol)) {
     const ud = modHit.object.userData;
-    // fenêtre / porte : sélection simple (glisser, décaler, retirer)
-    if (ud.opening) {
+    // un seul comportement pour tout : clic = sélection + carte contextuelle
+    // (près de l'objet au desktop, drawer au mobile)
+    if (ud.opening || ud.corner || ud.fixture || (current.gapComps && current.gapComps[ud.gapKey])) {
       if (!selection || selection.mesh !== modHit.object) {
         hidePopover();
         selectModule(modHit.object);
-      } else if (mobileMq.matches) openMobileContext();
-      return;
-    }
-    // coin : sélection simple (retirer / remettre via la barre)
-    if (ud.corner) {
-      if (!selection || selection.mesh !== modHit.object) {
-        hidePopover();
-        selectModule(modHit.object);
-      } else if (mobileMq.matches) openMobileContext();
-      return;
-    }
-    // électro : 1er clic = sélection, 2e clic = ses réglages (fini / style)
-    if (ud.fixture) {
-      if (selection && selection.mesh === modHit.object) {
-        if (mobileMq.matches) openMobileContext();
-        else showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
-      } else {
-        hidePopover();
-        selectModule(modHit.object);
       }
-      return;
-    }
-    const comp = current.gapComps && current.gapComps[ud.gapKey];
-    if (comp) {
-      // 1er clic = sélection (déplacer ou paramétrer) ; 2e clic = paramètres
-      if (selection && selection.mesh === modHit.object) {
-        if (mobileMq.matches) openMobileContext();
-        else showModuleEditor(x, y, ud, comp);
-      } else {
-        hidePopover();
-        selectModule(modHit.object);
-      }
+      openContext(x, y);
       return;
     }
   }
@@ -305,25 +283,22 @@ function pickModule(x, y) {
   hidePopover();
 }
 
-// ————— sélection de module : mini-barre flottante (déplacer / paramétrer) —————
-const modbar = document.createElement('div');
-modbar.id = 'modbar';
-modbar.hidden = true;
-modbar.innerHTML = `
-  <span class="mb-title"></span>
-  <button class="mb-left" title="Déplacer vers la gauche">◀</button>
-  <button class="mb-right" title="Déplacer vers la droite">▶</button>
-  <button class="mb-edit">✏️ Paramètres</button>
-  <button class="mb-del" title="Retirer ce caisson">🗑</button>
-  <button class="mb-close" title="Désélectionner">✕</button>`;
-document.getElementById('app').appendChild(modbar);
-
+// ————— sélection : contour + carte contextuelle unique (plus de barre) —————
 function findEditable(key, idx) {
   return current.editables.find((m) => m.userData.gapKey === key && m.userData.gapIndex === idx) || null;
 }
 
 const FIXTURE_TITLES = { water: 'Évier', stove: 'Cuisinière', dw: 'Lave-vaisselle', fridge: 'Réfrigérateur' };
 const CORNER_TITLES = { bl: 'Caisson de coin', br: 'Caisson de coin', ul: 'Coin mural', ur: 'Coin mural' };
+function selectionTitle(ud) {
+  return ud.fixture
+    ? `${FIXTURE_TITLES[ud.fixture]} · ${Math.round(ud.widthIn)} po`
+    : ud.corner
+      ? `${CORNER_TITLES[ud.corner]}${ud.current === 'vide' ? ' · vide' : ` · ${Math.round(ud.widthIn)} po`}`
+      : ud.opening
+        ? `${ud.openingType === 'fenetre' ? 'Fenêtre' : 'Porte'} · ${Math.round(ud.width * 100)} cm`
+        : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
+}
 
 let outlineFlash = 0; // le contour flashe blanc → laiton à la sélection (remarquable)
 function attachSelection(mesh) {
@@ -338,24 +313,6 @@ function attachSelection(mesh) {
       : ud.opening
         ? { opening: ud.opening, ud, mesh }
         : { key: ud.gapKey, idx: ud.gapIndex, ud, mesh };
-  modbar.querySelector('.mb-title').textContent = ud.fixture
-    ? `${FIXTURE_TITLES[ud.fixture]} · ${Math.round(ud.widthIn)} po`
-    : ud.corner
-      ? `${CORNER_TITLES[ud.corner]} · ${Math.round(ud.widthIn)} po`
-      : ud.opening
-        ? `${ud.openingType === 'fenetre' ? 'Fenêtre' : 'Porte'} · ${Math.round(ud.width * 100)} cm`
-        : `${moduleTypeLabel(ud.current)} · ${Math.round(ud.widthIn)} po`;
-  // un espace vide se « remplit » plutôt qu'il ne se paramètre ; les coins et
-  // les ouvertures n'ont pas de paramètres ; un coin ne se déplace pas
-  modbar.querySelector('.mb-edit').textContent = ud.current === 'vide' ? '➕ Ajouter' : '✏️ Paramètres';
-  modbar.querySelector('.mb-edit').style.display = (ud.corner || ud.opening) ? 'none' : '';
-  modbar.querySelector('.mb-del').style.display = ud.current === 'vide' ? 'none' : '';
-  const noMove = !!ud.corner;
-  modbar.querySelector('.mb-left').style.display = noMove ? 'none' : '';
-  modbar.querySelector('.mb-right').style.display = noMove ? 'none' : '';
-  // mobile : pas de barre flottante — le drawer contextuel porte les actions
-  modbar.hidden = mobileMq.matches;
-  positionModbar();
 }
 document.addEventListener('atelier:deselect', () => { deselectModule(); hidePopover(); });
 
@@ -378,9 +335,6 @@ function ensureDetached() {
 function selectModule(mesh) {
   attachSelection(mesh);
   ensureDetached();
-  // mobile : tap court = le drawer contextuel s'ouvre directement
-  // (pendant un maintien-pour-saisir, pas de drawer — on s'apprête à glisser)
-  if (mobileMq.matches && !pressHold && !moveDrag) openMobileContext();
   if (!sessionStorage.getItem('coach-module')) {
     sessionStorage.setItem('coach-module', '1');
     showToast(mobileMq.matches
@@ -393,36 +347,12 @@ function deselectModule() {
   if (!selection) return;
   selection = null;
   clearOutline();
-  modbar.hidden = true;
   // la re-fusion attend la prochaine reconstruction naturelle (aucun coût ici)
   detachedKey = null;
   setDetachedModule(null);
 }
 
-// la barre suit le caisson sélectionné (projection écran, recalée chaque frame) ;
-// elle s'efface si le point passe derrière la caméra ou si le mur est escamoté.
-// Sur mobile, elle est ANCRÉE en bas (au-dessus du sheet) — jamais sur la scène.
-function positionModbar() {
-  if (!selection || modbar.hidden) return;
-  if (mobileMq.matches) {
-    modbar.style.visibility = 'visible';
-    modbar.style.left = '';
-    modbar.style.top = '';
-    return;
-  }
-  const v = new THREE.Vector3();
-  selection.mesh.getWorldPosition(v);
-  const behind = v.clone().applyMatrix4(ctx.camera.matrixWorldInverse).z > -0.1;
-  const masked = !chainVisible(selection.mesh);
-  modbar.style.visibility = behind || masked ? 'hidden' : 'visible';
-  if (behind || masked) return;
-  v.project(ctx.camera);
-  const r = modbar.getBoundingClientRect();
-  const x = ((v.x + 1) / 2) * window.innerWidth - r.width / 2;
-  const y = ((1 - v.y) / 2) * window.innerHeight - r.height - 46;
-  modbar.style.left = `${Math.round(Math.min(Math.max(x, 8), window.innerWidth - r.width - 8))}px`;
-  modbar.style.top = `${Math.round(Math.min(Math.max(y, 8), window.innerHeight - r.height - 8))}px`;
-}
+function positionModbar() { /* plus de barre flottante — la carte contextuelle a tout */ }
 
 // préfixe de genre d'un gap : 'back:g' (bas), 'back:u' (murales), 'isl' (îlot) —
 // les déplacements ne traversent jamais les genres. Les hitbox sans gapKey
@@ -488,38 +418,66 @@ function arrowTarget(dir) {
 
 const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
 
-// ————— mobile : pas de barre flottante — tout vit dans le drawer (popover-bas).
-// Tap court = sélection + drawer contextuel (actions + réglages en une surface).
+// ————— carte contextuelle unique : actions + réglages en UNE surface —————
+// Clic sur un objet → la carte s'ouvre près de lui (desktop) ou en drawer
+// (mobile). Glisser reste sans aucune UI.
 const ctxRow = document.createElement('div');
 ctxRow.id = 'ctxRow';
 ctxRow.innerHTML = `
   <button class="cx-left" title="Décaler à gauche">◀</button>
   <button class="cx-right" title="Décaler à droite">▶</button>
   <span class="cx-spacer"></span>
+  <button class="cx-add">↺ Remettre</button>
+  <button class="cx-set">⚙ Réglages</button>
   <button class="cx-del">🗑 Retirer</button>
-  <button class="cx-close">✕</button>`;
+  <button class="cx-close" title="Fermer">✕</button>`;
 const popEl = document.getElementById('popover');
 popEl.insertBefore(ctxRow, document.getElementById('popoverTitle'));
 
-function openMobileContext() {
+function openContext(x = window.innerWidth / 2, y = 130) {
   if (!selection) return;
   const ud = selection.ud;
-  if (ud.fixture) {
-    showSurfaceEditor(12, window.innerHeight - 200, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
-  } else if (ud.opening || ud.corner) {
-    document.getElementById('popoverTitle').textContent = modbar.querySelector('.mb-title').textContent;
+  // mobile : carte COMPACTE près du doigt (titre + actions) — bien plus rapide
+  // que le drawer ; les réglages complets s'ouvrent sur demande via ⚙
+  const compact = mobileMq.matches;
+  if (compact) {
+    document.getElementById('popoverTitle').textContent = selectionTitle(ud);
     document.getElementById('popoverOpts').innerHTML = '';
-    popEl.hidden = false;
-    document.dispatchEvent(new CustomEvent('sheet:peek'));
+    placePopover(popEl, x, y, true);
+  } else if (ud.fixture) {
+    showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+  } else if (ud.opening || ud.corner) {
+    document.getElementById('popoverTitle').textContent = selectionTitle(ud);
+    document.getElementById('popoverOpts').innerHTML = '';
+    placePopover(popEl, x, y);
   } else {
     const comp = current.gapComps[selection.key];
-    if (comp) showModuleEditor(12, window.innerHeight - 200, ud, comp);
+    if (comp) showModuleEditor(x, y, ud, comp);
   }
   ctxRow.querySelector('.cx-del').style.display = ud.current === 'vide' ? 'none' : '';
+  ctxRow.querySelector('.cx-add').style.display = (ud.corner && ud.current === 'vide') ? '' : 'none';
   const noMove = !!ud.corner;
   ctxRow.querySelector('.cx-left').style.display = noMove ? 'none' : '';
   ctxRow.querySelector('.cx-right').style.display = noMove ? 'none' : '';
+  // ⚙ seulement en compact, et seulement quand des réglages existent
+  // (caissons et espaces vides → éditeur de module ; électros → éditeur surface)
+  const hasSettings = !!ud.fixture || (!ud.opening && !ud.corner);
+  ctxRow.querySelector('.cx-set').style.display = compact && hasSettings ? '' : 'none';
 }
+
+// ⚙ Réglages (mobile) : ouvre l'éditeur complet en drawer — la carte compacte
+// reste le chemin court pour décaler/retirer
+ctxRow.querySelector('.cx-set').addEventListener('click', (e) => {
+  if (!selection) return;
+  const ud = selection.ud;
+  e.currentTarget.style.display = 'none'; // dans le drawer, ⚙ serait redondant
+  if (ud.fixture) {
+    showSurfaceEditor(window.innerWidth / 2, 130, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+  } else {
+    const comp = current.gapComps[selection.key];
+    if (comp) showModuleEditor(window.innerWidth / 2, 130, ud, comp);
+  }
+});
 
 // geler la composition actuelle d'un mur en plans explicites : après le
 // retrait ou le déplacement d'un électro, la reconstruction par positions
@@ -562,28 +520,14 @@ function actStep(dir, btn) {
   const t = arrowTarget(dir);
   if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(btn);
 }
-modbar.querySelector('.mb-left').addEventListener('click', (e) => actStep(-1, e.currentTarget));
-modbar.querySelector('.mb-right').addEventListener('click', (e) => actStep(1, e.currentTarget));
 ctxRow.querySelector('.cx-left').addEventListener('click', (e) => actStep(-1, e.currentTarget));
 ctxRow.querySelector('.cx-right').addEventListener('click', (e) => actStep(1, e.currentTarget));
 ctxRow.querySelector('.cx-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
-modbar.querySelector('.mb-edit').addEventListener('click', () => {
-  if (!selection) return;
-  // coin retiré : ➕ le remet en place
-  if (selection.ud.corner) {
-    if (selection.ud.current === 'vide') setState({ cornerOff: { [selection.ud.corner]: false } });
-    return;
-  }
-  const r = modbar.getBoundingClientRect();
-  if (selection.ud.fixture) {
-    showSurfaceEditor(r.left, r.bottom + 8, selection.ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
-    return;
-  }
-  const comp = current.gapComps[selection.key];
-  if (comp) showModuleEditor(r.left, r.bottom + 8, selection.ud, comp);
+ctxRow.querySelector('.cx-add').addEventListener('click', () => {
+  // coin retiré : le remettre en place
+  if (selection?.ud.corner) setState({ cornerOff: { [selection.ud.corner]: false } });
 });
 ctxRow.querySelector('.cx-del').addEventListener('click', (e) => actDelete(e.currentTarget));
-modbar.querySelector('.mb-del').addEventListener('click', (e) => actDelete(e.currentTarget));
 function actDelete(btn) {
   if (!selection) return;
   // coin : retirer → sa zone est rendue au ruban (ré-ajout depuis l'espace vide)
@@ -626,7 +570,6 @@ function actDelete(btn) {
     hinges: comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null),
   } } });
 }
-modbar.querySelector('.mb-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
 
 // ————— drag fantôme : aucun rebuild pendant le geste —————
 // Le state ne bouge pas tant qu'on glisse : un fantôme translucide suit le
@@ -849,8 +792,8 @@ canvas.addEventListener('pointerdown', (e) => {
         ensureDetached();
         moveDrag = { x0: e.clientX, y0: e.clientY, started: true, freshSelect: true };
         ctx.controls.enabled = false;
-        modbar.hidden = true;
-        ghost = makeGhost();
+        // le VRAI caisson sous le doigt (pas la boîte translucide)
+        ghost = selection.ud.opening ? makeGhost() : makeLiveGhost();
         if (navigator.vibrate) navigator.vibrate(15);
         try { canvas.setPointerCapture(e.pointerId); } catch { /* déjà capturé */ }
       }, 280),
@@ -908,7 +851,6 @@ canvas.addEventListener('pointermove', (e) => {
     moveDrag.started = true;
     hidePopover();
     canvas.style.cursor = 'grabbing';
-    modbar.hidden = true; // la barre laisse place au fantôme et aux cotes
   }
   const f = current.focus;
   const ud = selection.ud;
@@ -988,7 +930,6 @@ function endModuleDrag(cancelled = false) {
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
-  if (selection) modbar.hidden = false;
   if (cancelled || !d.started || !drop || !selection) {
     if (hadLive && selection) drawOutline(selection.mesh);
     return;
