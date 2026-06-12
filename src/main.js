@@ -106,24 +106,6 @@ ctx.setTick(() => {
     if (f2 >= 1) { settle.obj.scale.setScalar(1); settle = null; }
     else settle.obj.scale.setScalar(1 + 0.04 * (1 - f2) * (1 - f2));
   }
-  // « soulever – s'écarter – poser » : le caisson saisi monte (~16 cm, on le
-  // PORTE au-dessus de la cuisine, il ne traverse plus rien) et les voisins
-  // glissent en douceur vers leur position prévisualisée
-  if (ghost && ghost.live) {
-    // la coordonnée du glissement appartient à ghostPlace ; ici on lerpe la
-    // hauteur ET le retrait vers la pièce (sortir de sous le comptoir)
-    for (const k of ['x', 'y', 'z']) {
-      if (k === ghost.axis) continue;
-      const want = ghost.liveOrig[k] + (ghost.liftStart ? ghost.carry[k] : 0);
-      ghost.live.position[k] += (want - ghost.live.position[k]) * 0.22;
-    }
-  }
-  if (ghost && ghost.mates) {
-    for (const m of ghost.mates) {
-      const want = m.orig[ghost.axis] + m.target;
-      m.grp.position[ghost.axis] += (want - m.grp.position[ghost.axis]) * 0.22;
-    }
-  }
 });
 
 // un asset GLB qui finit de charger remplace son repli procédural au
@@ -335,7 +317,8 @@ function attachSelection(mesh) {
 document.addEventListener('atelier:deselect', () => { deselectModule(); hidePopover(); });
 
 // le module sélectionné est exclu de la fusion de géométrie : son groupe garde
-// ses meshes et le VRAI caisson peut suivre le doigt pendant le drag
+// ses meshes — la micro-animation d'installation après un drop doit pouvoir
+// scaler son groupe sans toucher au reste du mur
 let detachedKey = null;
 function ensureDetached() {
   const k = !selection ? null
@@ -344,11 +327,9 @@ function ensureDetached() {
     : `${selection.key}#${selection.idx}`;
   if (k === detachedKey) return;
   detachedKey = k;
-  // prefix : tout le mur du même genre reste en groupes individuels — les
-  // voisins peuvent s'écarter en direct pendant un réordonnancement
   setDetachedModule(!k ? null
     : selection.ud.fixture ? { fixture: selection.ud.fixture }
-    : { key: selection.key, idx: selection.idx, prefix: gapPrefix(selection.key) });
+    : { key: selection.key, idx: selection.idx });
   rebuild();
 }
 
@@ -403,18 +384,10 @@ function modsOfGap(key) {
 // posés en miroir, l'index 0 est à droite dans le monde)
 const tmpA = new THREE.Vector3();
 
-// coordonnée de REPOS d'un module le long de l'axe : pendant un drag, les
-// voisins prévisualisés sont décalés (animation) — les calculs de cible
-// doivent ignorer ces décalages, sinon la cible se calcule sur elle-même
+// coordonnée d'un module le long de l'axe — pendant un drag, seule la boîte
+// fantôme bouge : les positions réelles restent fiables telles quelles
 function restAlong(wall, m, f) {
-  let a = alongAxis(wall, m.getWorldPosition(tmpA), f);
-  if (ghost && ghost.mateByGrp) {
-    for (let p = m.parent; p; p = p.parent) {
-      const mt = ghost.mateByGrp.get(p);
-      if (mt) { a -= p.position[ghost.axis] - mt.orig[ghost.axis]; break; }
-    }
-  }
-  return a;
+  return alongAxis(wall, m.getWorldPosition(tmpA), f);
 }
 
 function gapReversed(key, wall, f) {
@@ -700,67 +673,10 @@ function makeGhost() {
   return g;
 }
 
-// fantôme « vivant » : le VRAI caisson (détaché de la fusion) suit le doigt,
-// avec une empreinte de validité au sol — plus de boîte abstraite
-function makeLiveGhost() {
-  const src = selection.mesh;
-  const p = src.geometry.parameters;
-  const wall = selection.ud.wall || (selection.key || '').split(':')[0];
-  const axis = (wall === 'left' || wall === 'right') ? 'z' : 'x';
-  const mat = new THREE.MeshBasicMaterial({ color: GHOST_OK, transparent: true, opacity: 0.4, depthWrite: false });
-  const foot = new THREE.Mesh(new THREE.PlaneGeometry(p.width, p.depth), mat);
-  const wp = src.getWorldPosition(new THREE.Vector3());
-  const wq = src.getWorldQuaternion(new THREE.Quaternion());
-  foot.position.set(wp.x, 0.012, wp.z);
-  foot.quaternion.copy(wq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
-  ctx.scene.add(foot);
-  const grp = src.parent;
-  const live = grp && grp.userData.detachedKeep ? grp : null;
-  if (live) clearOutline(); // le caisson en mouvement EST le feedback
-  // voisins du même mur/genre (détachés via prefix) : pendant un
-  // réordonnancement ils glissent en douceur vers leur position prévisualisée
-  const mates = [];
-  const mateByGrp = new Map();
-  ctx.scene.traverse((o) => {
-    if (!o.userData.dragMate || o === live) return;
-    const m = { grp: o, orig: o.position.clone(), key: o.userData.dragMate.key, idx: o.userData.dragMate.idx, target: 0 };
-    mates.push(m);
-    mateByGrp.set(o, m);
-  });
-  if (live) mateByGrp.set(live, { orig: live.position.clone() });
-  return {
-    mesh: foot, mat, edgeMat: null, axis, drop: null,
-    live, liveOrig: live ? live.position.clone() : null,
-    c0: wp[axis], chipY: wp.y + p.height / 2,
-    mates, mateByGrp,
-    liftStart: performance.now(), // saisir = soulever : on PORTE l'objet
-    carry: carryVector(),
-  };
-}
-
-// vecteur de portage : un bas SORT de sous le comptoir vers la pièce (comme on
-// tire un tiroir — impossible de le soulever assez sans toucher les murales)
-// puis voyage DEVANT les comptoirs ; une murale s'avance aussi ; un grand
-// corps (frigo…) se soulève à peine (plafond) sans retrait. La direction
-// « vers la pièce » vient du MUR (les rotations des groupes ne sont pas
-// homogènes entre bas et murales) ; l'îlot sort côté allée de travail.
-const ROOM_DIR = { back: [0, 1], front: [0, -1], left: [1, 0], right: [-1, 0], isl: [0, -1] };
-function carryVector() {
-  const ud = selection.ud;
-  const wall = ud.wall || (selection.key || '').split(':')[0];
-  const tall = ud.fixture === 'fridge' || ud.fixture === 'pantry' || ['frigo', 'garde-manger', 'four-mural'].includes(ud.current);
-  const pull = tall ? 0 : ud.upper ? 0.45 : 0.68; // 68 cm : le dos passe le nez du comptoir
-  const lift = tall ? 0.06 : ud.upper ? 0.08 : 0.12;
-  const [dx, dz] = ROOM_DIR[wall] || [0, 0];
-  return new THREE.Vector3(dx * pull, lift, dz * pull);
-}
-
-// positionne le fantôme (empreinte + vrai caisson) au centre cRoom (coord pièce, m)
+// positionne la boîte fantôme au centre cRoom (coord pièce, m)
 function ghostPlace(cRoom) {
   const f = current.focus;
-  const wc = cRoom - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
-  ghost.mesh.position[ghost.axis] = wc;
-  if (ghost.live) ghost.live.position[ghost.axis] = ghost.liveOrig[ghost.axis] + (wc - ghost.c0);
+  ghost.mesh.position[ghost.axis] = cRoom - (ghost.axis === 'x' ? f.a / 2 : f.roomD / 2);
 }
 
 function killGhost() {
@@ -783,7 +699,7 @@ function showDims(leftIn, rightIn) {
   dimsChip.textContent = `← ${Math.round(leftIn)} po · ${Math.round(rightIn)} po →`;
   dimsChip.hidden = false;
   const v = ghost.mesh.position.clone();
-  v.y = (ghost.chipY ?? v.y + ghost.mesh.geometry.parameters.height / 2) + 0.12;
+  v.y += ghost.mesh.geometry.parameters.height / 2 + 0.12;
   v.project(ctx.camera);
   const r = dimsChip.getBoundingClientRect();
   dimsChip.style.left = `${Math.round(((v.x + 1) / 2) * window.innerWidth - r.width / 2)}px`;
@@ -869,48 +785,27 @@ function fixtureFreeRuns() {
 }
 
 // prévisualisation d'un réordonnancement (mur plein) : empile les pièces du
-// ou des gaps concernés comme le ferait le lâcher, pose les cibles des
-// voisins (delta animé dans la boucle de rendu) et retourne le centre où le
-// caisson porté se poserait — il ne glisse plus jamais À TRAVERS les voisins
+// gap visé comme le ferait le lâcher et retourne le centre où la boîte
+// fantôme se poserait — elle ne se pose jamais À TRAVERS les voisins
 function reorderPreview(t) {
-  for (const m of ghost.mates) m.target = 0;
   const w = selection.ud.width;
-  const stack = (k, removeIdx, insertIdx) => {
-    const comp = current.gapComps[k];
-    if (!comp) return null;
-    const rev = k === 'isl';
-    const pre = gapPrefix(k);
-    const startM = k === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(k.slice(pre.length), 10) * IN;
-    const totalM = comp.totalIn * IN;
-    const seq = comp.widths.map((wi, i) => ({ i, w: wi * IN }));
-    if (removeIdx != null) seq.splice(removeIdx, 1);
-    if (insertIdx != null) seq.splice(Math.max(0, Math.min(insertIdx, seq.length)), 0, { i: -1, w });
-    // centres empilés depuis le début du gap (l'îlot empile en miroir)
-    let cum = 0, dragC = null;
-    const center = new Map();
-    for (const p of seq) {
-      const a0 = rev ? startM + totalM - cum - p.w : startM + cum;
-      if (p.i === -1) dragC = a0 + p.w / 2; else center.set(p.i, a0 + p.w / 2);
-      cum += p.w;
-    }
-    // centres de repos → deltas des voisins
-    cum = 0;
-    comp.widths.forEach((wi, i) => {
-      const wm = wi * IN;
-      const a0 = rev ? startM + totalM - cum - wm : startM + cum;
-      const c = center.get(i);
-      if (c != null) {
-        for (const m of ghost.mates) {
-          if (m.key === k && m.idx === i) { m.target = c - (a0 + wm / 2); break; }
-        }
-      }
-      cum += wm;
-    });
-    return dragC;
-  };
-  if (t.key === selection.key) return stack(t.key, selection.idx, t.idx);
-  stack(selection.key, selection.idx, null); // le gap d'origine se referme
-  return stack(t.key, null, t.idx);          // le gap visé ouvre le trou
+  const comp = current.gapComps[t.key];
+  if (!comp) return null;
+  const k = t.key, rev = k === 'isl';
+  const pre = gapPrefix(k);
+  const startM = k === 'isl' ? current.islandRect.x0 + 0.04 : parseInt(k.slice(pre.length), 10) * IN;
+  const totalM = comp.totalIn * IN;
+  const seq = comp.widths.map((wi, i) => ({ i, w: wi * IN }));
+  if (t.key === selection.key) seq.splice(selection.idx, 1);
+  seq.splice(Math.max(0, Math.min(t.idx, seq.length)), 0, { i: -1, w });
+  // centres empilés depuis le début du gap (l'îlot empile en miroir)
+  let cum = 0, dragC = null;
+  for (const p of seq) {
+    const a0 = rev ? startM + totalM - cum - p.w : startM + cum;
+    if (p.i === -1) dragC = a0 + p.w / 2;
+    cum += p.w;
+  }
+  return dragC;
 }
 
 // ————— glissement du caisson sélectionné le long de son mur —————
@@ -997,8 +892,7 @@ canvas.addEventListener('pointerdown', (e) => {
         ensureDetached();
         moveDrag = { x0: e.clientX, y0: e.clientY, started: true, freshSelect: true };
         ctx.controls.enabled = false;
-        // le VRAI caisson sous le doigt (pas la boîte translucide)
-        ghost = selection.ud.opening ? makeGhost() : makeLiveGhost();
+        ghost = makeGhost();
         if (navigator.vibrate) navigator.vibrate(15);
         try { canvas.setPointerCapture(e.pointerId); } catch { /* déjà capturé */ }
       }, 280),
@@ -1009,7 +903,7 @@ canvas.addEventListener('pointerdown', (e) => {
     hidePopover();
     selectModule(modHit.object);
   }
-  ensureDetached(); // le vrai caisson doit être manipulable dès le premier mouvement
+  ensureDetached(); // hors fusion : l'animation d'installation scalera son groupe au drop
   // pendant le geste, le state ne bouge pas : le fantôme prévisualise tout
   moveDrag = { x0: e.clientX, y0: e.clientY, started: false, freshSelect: fresh };
   ctx.controls.enabled = false;
@@ -1060,11 +954,11 @@ canvas.addEventListener('pointermove', (e) => {
   const f = current.focus;
   const ud = selection.ud;
 
-  // électro : le VRAI appareil suit le doigt, mais UNIQUEMENT dans les plages
-  // libres (vides + sa place) — il saute par-dessus les caissons au lieu de
+  // électro : la boîte fantôme suit le doigt, mais UNIQUEMENT dans les plages
+  // libres (vides + sa place) — elle saute par-dessus les caissons au lieu de
   // les traverser (le solveur revalidera au lâcher : fenêtres, dégagements…)
   if (ud.fixture) {
-    if (!ghost) ghost = makeLiveGhost();
+    if (!ghost) ghost = makeGhost();
     const along = cursorAlong(ud.wall, e);
     if (along == null) return;
     if (!ghost.fixRuns) ghost.fixRuns = fixtureFreeRuns();
@@ -1094,8 +988,8 @@ canvas.addEventListener('pointermove', (e) => {
     ghost.drop = p != null ? { kind: 'opening', pos: p } : null;
     return;
   }
-  // module : le VRAI caisson suit le doigt — snap continu + cotes vers les voisins
-  if (!ghost) ghost = makeLiveGhost();
+  // module : la boîte fantôme suit le doigt — snap continu + cotes vers les voisins
+  if (!ghost) ghost = makeGhost();
   const wall = selection.key.split(':')[0];
   const along = cursorAlong(wall, e);
   if (along == null) return;
@@ -1109,7 +1003,6 @@ canvas.addEventListener('pointermove', (e) => {
   // un run sans aucun jeu (= sa propre place dans un mur plein) ne « tient »
   // le fantôme que si le curseur reste proche ; au-delà, on prévisualise l'échange
   if (best && (best.a1 - best.a0 - w > 0.04 || bd < 0.18)) {
-    for (const m of ghost.mates) m.target = 0; // pose libre : les voisins ne bougent pas
     ghostPlace(best.c);
     ghostTint(true);
     if (best.stuck) ghost.mat.color.setHex(0xfff3da); // empreinte vive quand collé
@@ -1119,9 +1012,8 @@ canvas.addEventListener('pointermove', (e) => {
     const offIn = best.rev ? (best.startM + best.totalM - best.c) / IN : (best.c - best.startM) / IN;
     ghost.drop = { kind: 'module', gapKey: best.k, offIn };
   } else {
-    // mur plein : réordonnancement VIVANT — le caisson porté se pose sur le
-    // créneau visé et les voisins glissent pour ouvrir le trou (zéro
-    // interpénétration ; hors cible, on garde la dernière pose valide)
+    // mur plein : la boîte fantôme se pose sur le créneau visé (l'échange ne
+    // s'applique qu'au lâcher ; hors cible, on garde la dernière pose valide)
     const t = dragTarget(e);
     const c = t ? reorderPreview(t) : null;
     if (c != null) {
@@ -1143,24 +1035,13 @@ function endModuleDrag(cancelled = false) {
   if (!moveDrag) return;
   const d = moveDrag;
   const drop = ghost ? ghost.drop : null;
-  // rien appliqué : le vrai caisson redescend à sa place et les voisins
-  // prévisualisés reglissent à la leur (le state n'a jamais bougé)
-  const hadLive = !!(ghost && ghost.live);
-  const restore = ghost ? ((live, liveOrig, mates, axis) => () => {
-    if (live) live.position.copy(liveOrig);
-    if (mates) for (const m of mates) m.grp.position[axis] = m.orig[axis];
-  })(ghost.live, ghost.liveOrig, ghost.mates, ghost.axis) : () => {};
   killGhost();
   moveDrag = null;
   ctx.controls.enabled = true;
   canvas.style.cursor = '';
-  if (cancelled || !d.started || !drop || !selection) {
-    restore();
-    if (hadLive && selection) drawOutline(selection.mesh);
-    return;
-  }
+  // rien à restaurer : seule la boîte fantôme a bougé, jamais la scène
+  if (cancelled || !d.started || !drop || !selection) return;
   justDropped = true;
-  let applied = false;
   if (drop.kind === 'fixture') {
     const patch = {
       constraints: { [selection.ud.fixture]: { auto: false, wall: selection.ud.wall, pos: drop.pos } },
@@ -1169,10 +1050,8 @@ function endModuleDrag(cancelled = false) {
     if (selection.ud.fixture === 'fridge') pinPantry(patch);
     setState(patch);
     pendingSettle = true;
-    applied = true;
   } else if (drop.kind === 'opening') {
     setState({ constraints: { openings: state.constraints.openings.map((o) => (o.id === selection.ud.opening ? { ...o, pos: drop.pos } : o)) } });
-    applied = true;
   } else if (drop.kind === 'module') {
     const r = placeModuleAt(current.gapComps, selection.key, selection.idx, drop.gapKey, drop.offIn);
     if (r) {
@@ -1180,18 +1059,12 @@ function endModuleDrag(cancelled = false) {
       selection.idx = r.idx;
       setState({ gapPlans: r.plans });
       pendingSettle = true;
-      applied = true;
     }
   } else if (drop.kind === 'module-reorder') {
     const t = drop.target;
     if (t && (t.key !== selection.key || t.idx !== selection.idx) && applySelectionMove(t.key, t.idx)) {
       pendingSettle = true;
-      applied = true;
     }
-  }
-  if (!applied) {
-    restore();
-    if (hadLive && selection) drawOutline(selection.mesh);
   }
 }
 let pendingSettle = false;
