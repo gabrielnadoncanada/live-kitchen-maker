@@ -423,13 +423,14 @@ const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.cla
 // (mobile). Glisser reste sans aucune UI.
 const ctxRow = document.createElement('div');
 ctxRow.id = 'ctxRow';
+// les libellés sont dans des <span> : la carte compacte mobile ne garde que les icônes
 ctxRow.innerHTML = `
   <button class="cx-left" title="Décaler à gauche">◀</button>
   <button class="cx-right" title="Décaler à droite">▶</button>
   <span class="cx-spacer"></span>
-  <button class="cx-add">↺ Remettre</button>
-  <button class="cx-set">⚙ Réglages</button>
-  <button class="cx-del">🗑 Retirer</button>
+  <button class="cx-add" title="Remettre">↺<span> Remettre</span></button>
+  <button class="cx-set" title="Réglages">⚙<span> Réglages</span></button>
+  <button class="cx-del" title="Retirer">🗑<span> Retirer</span></button>
   <button class="cx-close" title="Fermer">✕</button>`;
 const popEl = document.getElementById('popover');
 popEl.insertBefore(ctxRow, document.getElementById('popoverTitle'));

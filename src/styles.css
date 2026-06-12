@@ -663,19 +663,28 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   .popover-opts button { padding: 12px 13px; }
   .pop-chips .chip { padding: 10px 14px; font-size: 13px; }
 
-  /* ——— carte contextuelle COMPACTE : près de l'objet, pas en drawer ———
-     actions sous le doigt (◀ ▶ 🗑 ⚙ ✕) — position posée par placePopover
+  /* ——— carte contextuelle COMPACTE : pastille d'icônes près de l'objet ———
+     (◀ ▶ ⚙ 🗑 ✕, sans libellés ni titre) — position posée par placePopover
      via --cx-l/--cx-t (les règles drawer ci-dessus étant en !important) */
   .popover.compact {
     left: var(--cx-l, 8px) !important; right: auto !important;
     top: var(--cx-t, 80px) !important; bottom: auto !important;
     width: max-content; max-width: calc(100vw - 16px);
-    border-radius: 15px; padding: 11px 13px; max-height: none; overflow: visible;
+    border-radius: 999px; padding: 5px 7px; max-height: none; overflow: visible;
     animation: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .popover.compact .pop-grip { display: none; }
-  .popover.compact .popover-title { margin-bottom: 0; touch-action: auto; }
-  .popover.compact #ctxRow { padding-bottom: 8px; margin-bottom: 6px; }
+  .popover.compact .pop-grip,
+  .popover.compact .popover-title,
+  .popover.compact .popover-opts,
+  .popover.compact #ctxRow button span,
+  .popover.compact #ctxRow .cx-spacer { display: none; }
+  .popover.compact #ctxRow {
+    padding: 0; margin: 0; border-bottom: none; gap: 3px;
+  }
+  .popover.compact #ctxRow button {
+    width: 40px; height: 40px; padding: 0; border-radius: 999px;
+    font-size: 15px; line-height: 1;
+  }
 
   /* éléments flottants : toujours au-dessus du sheet */
   .nkba-chip { left: 10px; bottom: calc(var(--sheet-h) + 12px); max-width: calc(100vw - 20px); }
