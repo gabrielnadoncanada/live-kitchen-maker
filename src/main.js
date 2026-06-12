@@ -110,8 +110,13 @@ ctx.setTick(() => {
   // PORTE au-dessus de la cuisine, il ne traverse plus rien) et les voisins
   // glissent en douceur vers leur position prévisualisée
   if (ghost && ghost.live) {
-    const wantY = ghost.liveOrig.y + (ghost.liftStart ? ghost.liftH : 0);
-    ghost.live.position.y += (wantY - ghost.live.position.y) * 0.22;
+    // la coordonnée du glissement appartient à ghostPlace ; ici on lerpe la
+    // hauteur ET le retrait vers la pièce (sortir de sous le comptoir)
+    for (const k of ['x', 'y', 'z']) {
+      if (k === ghost.axis) continue;
+      const want = ghost.liveOrig[k] + (ghost.liftStart ? ghost.carry[k] : 0);
+      ghost.live.position[k] += (want - ghost.live.position[k]) * 0.22;
+    }
   }
   if (ghost && ghost.mates) {
     for (const m of ghost.mates) {
@@ -687,12 +692,25 @@ function makeLiveGhost() {
     c0: wp[axis], chipY: wp.y + p.height / 2,
     mates, mateByGrp,
     liftStart: performance.now(), // saisir = soulever : on PORTE l'objet
-    // hauteur de portage : un bas passe AU-DESSUS du comptoir (sans toucher
-    // les murales), un grand corps à peine (plafond), une murale modérément
-    liftH: selection.ud.upper ? 0.16
-      : (selection.ud.fixture === 'fridge' || ['frigo', 'garde-manger', 'four-mural'].includes(selection.ud.current)) ? 0.06
-      : 0.36,
+    carry: carryVector(),
   };
+}
+
+// vecteur de portage : un bas SORT de sous le comptoir vers la pièce (comme on
+// tire un tiroir — impossible de le soulever assez sans toucher les murales)
+// puis voyage DEVANT les comptoirs ; une murale s'avance aussi ; un grand
+// corps (frigo…) se soulève à peine (plafond) sans retrait. La direction
+// « vers la pièce » vient du MUR (les rotations des groupes ne sont pas
+// homogènes entre bas et murales) ; l'îlot sort côté allée de travail.
+const ROOM_DIR = { back: [0, 1], front: [0, -1], left: [1, 0], right: [-1, 0], isl: [0, -1] };
+function carryVector() {
+  const ud = selection.ud;
+  const wall = ud.wall || (selection.key || '').split(':')[0];
+  const tall = ud.fixture === 'fridge' || ['frigo', 'garde-manger', 'four-mural'].includes(ud.current);
+  const pull = tall ? 0 : ud.upper ? 0.45 : 0.68; // 68 cm : le dos passe le nez du comptoir
+  const lift = tall ? 0.06 : ud.upper ? 0.08 : 0.12;
+  const [dx, dz] = ROOM_DIR[wall] || [0, 0];
+  return new THREE.Vector3(dx * pull, lift, dz * pull);
 }
 
 // positionne le fantôme (empreinte + vrai caisson) au centre cRoom (coord pièce, m)
