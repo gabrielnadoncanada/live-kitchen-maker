@@ -22,6 +22,7 @@ let current = null;   // { group, manifest, editables, focus }
 let outline = null;
 let selection = null; // module sélectionné { key, idx, ud, mesh } — clic = choisir, puis déplacer ou paramétrer
 let moveDrag = null;  // session de glissement du module sélectionné le long de son mur
+let pressHold = null; // mobile : maintien en cours avant saisie (glisser tout de suite = caméra)
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -351,7 +352,9 @@ function selectModule(mesh) {
   attachSelection(mesh);
   if (!sessionStorage.getItem('coach-module')) {
     sessionStorage.setItem('coach-module', '1');
-    showToast('↔ Glissez le caisson pour le déplacer · re-touchez-le pour ses réglages');
+    showToast(mobileMq.matches
+      ? '✋ Maintenez un objet pour le saisir, puis glissez-le'
+      : '↔ Glissez le caisson pour le déplacer · re-touchez-le pour ses réglages');
   }
 }
 
@@ -730,8 +733,28 @@ canvas.addEventListener('pointerdown', (e) => {
   const fresh = !selection || selection.mesh !== modHit.object;
   // un coin se sélectionne mais ne se glisse pas (la caméra garde le geste)
   if (modHit.object.userData.corner) {
-    if (fresh) { hidePopover(); selectModule(modHit.object); }
+    if (fresh && e.pointerType !== 'touch') { hidePopover(); selectModule(modHit.object); }
     return;
+  }
+  // mobile : MAINTENIR (~0,3 s) pour saisir — glisser tout de suite reste une
+  // rotation de caméra (le doigt atterrit forcément sur un meuble)
+  if (e.pointerType === 'touch') {
+    const obj = modHit.object;
+    if (pressHold) clearTimeout(pressHold.timer);
+    pressHold = {
+      pointerId: e.pointerId, x0: e.clientX, y0: e.clientY,
+      timer: setTimeout(() => {
+        pressHold = null;
+        if (!selection || selection.mesh !== obj) { hidePopover(); selectModule(obj); }
+        moveDrag = { x0: e.clientX, y0: e.clientY, started: true, freshSelect: true };
+        ctx.controls.enabled = false;
+        modbar.hidden = true;
+        ghost = makeGhost();
+        if (navigator.vibrate) navigator.vibrate(15);
+        try { canvas.setPointerCapture(e.pointerId); } catch { /* déjà capturé */ }
+      }, 280),
+    };
+    return; // la caméra garde le geste tant que la saisie n'est pas confirmée
   }
   if (fresh) {
     hidePopover();
@@ -769,6 +792,12 @@ function fixtureDragPos(e) {
 }
 
 canvas.addEventListener('pointermove', (e) => {
+  // un doigt qui bouge avant la fin du maintien = rotation de caméra
+  if (pressHold && e.pointerId === pressHold.pointerId
+    && Math.hypot(e.clientX - pressHold.x0, e.clientY - pressHold.y0) > 10) {
+    clearTimeout(pressHold.timer);
+    pressHold = null;
+  }
   if (!moveDrag || !selection) return;
   e.stopImmediatePropagation();
   const thresh = e.pointerType === 'touch' ? 10 : 6; // aligné sur le filtre de tap
@@ -879,8 +908,9 @@ function endModuleDrag(cancelled = false) {
   }
 }
 let pendingSettle = false;
-canvas.addEventListener('pointerup', () => endModuleDrag(), { capture: true });
-canvas.addEventListener('pointercancel', () => endModuleDrag(true), { capture: true });
+const clearHold = () => { if (pressHold) { clearTimeout(pressHold.timer); pressHold = null; } };
+canvas.addEventListener('pointerup', () => { clearHold(); endModuleDrag(); }, { capture: true });
+canvas.addEventListener('pointercancel', () => { clearHold(); endModuleDrag(true); }, { capture: true });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (palDrag) cancelPaletteDrag();
