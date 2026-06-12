@@ -261,7 +261,7 @@ function pickModule(x, y) {
       if (!selection || selection.mesh !== modHit.object) {
         hidePopover();
         selectModule(modHit.object);
-      }
+      } else if (mobileMq.matches) openMobileContext();
       return;
     }
     // coin : sélection simple (retirer / remettre via la barre)
@@ -269,13 +269,14 @@ function pickModule(x, y) {
       if (!selection || selection.mesh !== modHit.object) {
         hidePopover();
         selectModule(modHit.object);
-      }
+      } else if (mobileMq.matches) openMobileContext();
       return;
     }
     // électro : 1er clic = sélection, 2e clic = ses réglages (fini / style)
     if (ud.fixture) {
       if (selection && selection.mesh === modHit.object) {
-        showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+        if (mobileMq.matches) openMobileContext();
+        else showSurfaceEditor(x, y, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
       } else {
         hidePopover();
         selectModule(modHit.object);
@@ -286,7 +287,8 @@ function pickModule(x, y) {
     if (comp) {
       // 1er clic = sélection (déplacer ou paramétrer) ; 2e clic = paramètres
       if (selection && selection.mesh === modHit.object) {
-        showModuleEditor(x, y, ud, comp);
+        if (mobileMq.matches) openMobileContext();
+        else showModuleEditor(x, y, ud, comp);
       } else {
         hidePopover();
         selectModule(modHit.object);
@@ -350,7 +352,8 @@ function attachSelection(mesh) {
   const noMove = !!ud.corner;
   modbar.querySelector('.mb-left').style.display = noMove ? 'none' : '';
   modbar.querySelector('.mb-right').style.display = noMove ? 'none' : '';
-  modbar.hidden = false;
+  // mobile : pas de barre flottante — le drawer contextuel porte les actions
+  modbar.hidden = mobileMq.matches;
   positionModbar();
 }
 document.addEventListener('atelier:deselect', () => { deselectModule(); hidePopover(); });
@@ -374,6 +377,9 @@ function ensureDetached() {
 function selectModule(mesh) {
   attachSelection(mesh);
   ensureDetached();
+  // mobile : tap court = le drawer contextuel s'ouvre directement
+  // (pendant un maintien-pour-saisir, pas de drawer — on s'apprête à glisser)
+  if (mobileMq.matches && !pressHold && !moveDrag) openMobileContext();
   if (!sessionStorage.getItem('coach-module')) {
     sessionStorage.setItem('coach-module', '1');
     showToast(mobileMq.matches
@@ -481,6 +487,39 @@ function arrowTarget(dir) {
 
 const flashDeny = (btn) => { btn.classList.add('deny'); setTimeout(() => btn.classList.remove('deny'), 320); };
 
+// ————— mobile : pas de barre flottante — tout vit dans le drawer (popover-bas).
+// Tap court = sélection + drawer contextuel (actions + réglages en une surface).
+const ctxRow = document.createElement('div');
+ctxRow.id = 'ctxRow';
+ctxRow.innerHTML = `
+  <button class="cx-left" title="Décaler à gauche">◀</button>
+  <button class="cx-right" title="Décaler à droite">▶</button>
+  <span class="cx-spacer"></span>
+  <button class="cx-del">🗑 Retirer</button>
+  <button class="cx-close">✕</button>`;
+const popEl = document.getElementById('popover');
+popEl.insertBefore(ctxRow, document.getElementById('popoverTitle'));
+
+function openMobileContext() {
+  if (!selection) return;
+  const ud = selection.ud;
+  if (ud.fixture) {
+    showSurfaceEditor(12, window.innerHeight - 200, ud.fixture === 'water' ? { type: 'sink' } : { type: 'appliance' });
+  } else if (ud.opening || ud.corner) {
+    document.getElementById('popoverTitle').textContent = modbar.querySelector('.mb-title').textContent;
+    document.getElementById('popoverOpts').innerHTML = '';
+    popEl.hidden = false;
+    document.dispatchEvent(new CustomEvent('sheet:peek'));
+  } else {
+    const comp = current.gapComps[selection.key];
+    if (comp) showModuleEditor(12, window.innerHeight - 200, ud, comp);
+  }
+  ctxRow.querySelector('.cx-del').style.display = ud.current === 'vide' ? 'none' : '';
+  const noMove = !!ud.corner;
+  ctxRow.querySelector('.cx-left').style.display = noMove ? 'none' : '';
+  ctxRow.querySelector('.cx-right').style.display = noMove ? 'none' : '';
+}
+
 // geler la composition actuelle d'un mur en plans explicites : après le
 // retrait ou le déplacement d'un électro, la reconstruction par positions
 // absolues préserve chaque caisson À SA PLACE — l'espace libéré reste vide
@@ -515,20 +554,18 @@ function nudgeOpening(dir) {
   return true;
 }
 
-modbar.querySelector('.mb-left').addEventListener('click', (e) => {
+function actStep(dir, btn) {
   if (!selection) return;
-  if (selection.ud.fixture) return nudgeFixture(-1);
-  if (selection.ud.opening) return void (nudgeOpening(-1) || flashDeny(e.currentTarget));
-  const t = arrowTarget(-1);
-  if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
-});
-modbar.querySelector('.mb-right').addEventListener('click', (e) => {
-  if (!selection) return;
-  if (selection.ud.fixture) return nudgeFixture(1);
-  if (selection.ud.opening) return void (nudgeOpening(1) || flashDeny(e.currentTarget));
-  const t = arrowTarget(1);
-  if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(e.currentTarget);
-});
+  if (selection.ud.fixture) return nudgeFixture(dir);
+  if (selection.ud.opening) return void (nudgeOpening(dir) || flashDeny(btn));
+  const t = arrowTarget(dir);
+  if (!t || !applySelectionMove(t.key, t.idx)) flashDeny(btn);
+}
+modbar.querySelector('.mb-left').addEventListener('click', (e) => actStep(-1, e.currentTarget));
+modbar.querySelector('.mb-right').addEventListener('click', (e) => actStep(1, e.currentTarget));
+ctxRow.querySelector('.cx-left').addEventListener('click', (e) => actStep(-1, e.currentTarget));
+ctxRow.querySelector('.cx-right').addEventListener('click', (e) => actStep(1, e.currentTarget));
+ctxRow.querySelector('.cx-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
 modbar.querySelector('.mb-edit').addEventListener('click', () => {
   if (!selection) return;
   // coin retiré : ➕ le remet en place
@@ -544,7 +581,9 @@ modbar.querySelector('.mb-edit').addEventListener('click', () => {
   const comp = current.gapComps[selection.key];
   if (comp) showModuleEditor(r.left, r.bottom + 8, selection.ud, comp);
 });
-modbar.querySelector('.mb-del').addEventListener('click', (e) => {
+ctxRow.querySelector('.cx-del').addEventListener('click', (e) => actDelete(e.currentTarget));
+modbar.querySelector('.mb-del').addEventListener('click', (e) => actDelete(e.currentTarget));
+function actDelete(btn) {
   if (!selection) return;
   // coin : retirer → sa zone est rendue au ruban (ré-ajout depuis l'espace vide)
   if (selection.ud.corner) {
@@ -570,7 +609,7 @@ modbar.querySelector('.mb-del').addEventListener('click', (e) => {
       stove: { range: false, hood: false }, fridge: { fridge: false },
       dw: { dw: false }, water: { sink: false },
     }[selection.ud.fixture];
-    if (!off) return flashDeny(e.currentTarget);
+    if (!off) return flashDeny(btn);
     const frozen = freezeWallPlans(selection.ud.wall);
     deselectModule();
     hidePopover();
@@ -578,14 +617,14 @@ modbar.querySelector('.mb-del').addEventListener('click', (e) => {
     return;
   }
   const comp = current.gapComps[selection.key];
-  if (!comp || selection.ud.current === 'vide') return flashDeny(e.currentTarget);
+  if (!comp || selection.ud.current === 'vide') return flashDeny(btn);
   const types = [...comp.types];
   types[selection.idx] = 'vide';
   setState({ gapPlans: { [selection.key]: {
     widths: [...comp.widths], types,
     hinges: comp.widths.map((_, i) => (comp.hinges || [])[i] ?? null),
   } } });
-});
+}
 modbar.querySelector('.mb-close').addEventListener('click', () => { deselectModule(); hidePopover(); });
 
 // ————— drag fantôme : aucun rebuild pendant le geste —————
@@ -803,8 +842,9 @@ canvas.addEventListener('pointerdown', (e) => {
     pressHold = {
       pointerId: e.pointerId, x0: e.clientX, y0: e.clientY,
       timer: setTimeout(() => {
-        pressHold = null;
+        // pressHold reste posé pendant selectModule : pas de drawer en mode saisie
         if (!selection || selection.mesh !== obj) { hidePopover(); selectModule(obj); }
+        pressHold = null;
         ensureDetached();
         moveDrag = { x0: e.clientX, y0: e.clientY, started: true, freshSelect: true };
         ctx.controls.enabled = false;
